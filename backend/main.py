@@ -1,24 +1,5 @@
+"""Compatibility entry point: run ``uvicorn main:app`` from backend/."""
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from app.main import app
 
-app = FastAPI(
-    title="Brightloop Subscription API",
-    version="1.0.0",
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-@app.get("/api/v1/health")
-def health_check():
-    return {
-        "status": "ok",
-        "service": "Brightloop Subscription API",
-    }
+__all__ = ["app"]

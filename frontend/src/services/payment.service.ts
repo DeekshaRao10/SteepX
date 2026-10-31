@@ -1,30 +1,20 @@
 import { Payment } from "@/types";
-import { apiClient, USE_MOCK, delay } from "./api";
-import { storage } from "./storage";
-
+import { PaymentResponse, PaymentCreate } from "@/types/api";
+import { apiClient, listAll } from "./api";
+import { invoiceService } from "./invoice.service";
+import { mapPayment } from "./mappers";
 export const paymentService = {
-  getAll: async (customerId?: string): Promise<Payment[]> => {
-    if (USE_MOCK) {
-      await delay(150);
-      let payments = storage.getPayments();
-      if (customerId) {
-        payments = payments.filter((p) => p.customerId === customerId);
-      }
-      return payments;
-    }
-    const response = await apiClient.get<Payment[]>("/payments", {
-      params: customerId ? { customer_id: customerId } : {},
-    });
-    return response.data;
+  async getAll(customerId?: string) {
+    const [payments, invoices] = await Promise.all([listAll<PaymentResponse>("/payments"), invoiceService.getAll(customerId)]);
+    const visible = new Set(invoices.map(i => i.id));
+    return payments.filter(p => visible.has(p.invoice_id)).map(p => mapPayment(p, invoices));
   },
-
-  create: async (data: Omit<Payment, "id" | "paymentNumber" | "createdAt">): Promise<Payment> => {
-    if (USE_MOCK) {
-      await delay(200);
-      return storage.createPayment(data);
-    }
-    const response = await apiClient.post<Payment>("/payments", data);
-    return response.data;
+  async create(data: Omit<Payment, "id" | "paymentNumber" | "createdAt">, idempotencyKey: string) {
+    if (!["cash", "bank_transfer", "check", "other"].includes(data.paymentMethod)) throw new Error("Select a supported manual payment method.");
+    const body: PaymentCreate = { invoice_id: data.invoiceId, amount: data.amount,
+      method: data.paymentMethod as PaymentCreate["method"], payment_date: data.paymentDate.slice(0, 10),
+      reference: data.transactionRef.trim() || null, notes: data.notes || "" };
+    const result = await apiClient.post<PaymentResponse>("/payments", body, { headers: { "Idempotency-Key": idempotencyKey } });
+    return mapPayment(result.data, []);
   },
 };
-

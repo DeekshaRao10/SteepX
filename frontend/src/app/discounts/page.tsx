@@ -1,4 +1,5 @@
 "use client";
+import { errorMessage } from "@/services/api";
 
 import React, { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -7,6 +8,7 @@ import { DataTable, Column } from "@/components/common/DataTable";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { Modal } from "@/components/common/Modal";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { useAuth } from "@/context/AuthContext";
 import { discountService } from "@/services/discount.service";
 import { Discount, DiscountType } from "@/types";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -25,7 +27,9 @@ import {
 
 export default function DiscountsPage() {
   const { toast } = useToast();
+  const { isAdmin } = useAuth();
   const [discounts, setDiscounts] = useState<Discount[]>([]);
+  const [loadError, setLoadError] = useState("");
   const [loading, setLoading] = useState(true);
 
   // Filter
@@ -39,6 +43,7 @@ export default function DiscountsPage() {
 
   // Form State
   const [formData, setFormData] = useState({
+    currency: "USD",
     code: "",
     name: "",
     type: "percentage" as DiscountType,
@@ -51,17 +56,7 @@ export default function DiscountsPage() {
     status: "active" as "active" | "expired" | "disabled",
   });
 
-  const loadDiscounts = async () => {
-    setLoading(true);
-    try {
-      const data = await discountService.getAll();
-      setDiscounts(data);
-    } catch (err) {
-      toast.error("Failed to load discount campaigns.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const loadDiscounts = () => discountService.getAll().then((data) => { setDiscounts(data); setLoadError(""); }).catch((error: unknown) => { setLoadError(errorMessage(error)); }).finally(() => setLoading(false));
 
   useEffect(() => {
     loadDiscounts();
@@ -69,6 +64,7 @@ export default function DiscountsPage() {
 
   const handleOpenCreate = () => {
     setFormData({
+      currency: "USD",
       code: `PROMO${Math.floor(10 + Math.random() * 90)}`,
       name: "",
       type: "percentage",
@@ -86,6 +82,7 @@ export default function DiscountsPage() {
   const handleOpenEdit = (d: Discount) => {
     setSelectedDiscount(d);
     setFormData({
+      currency: d.currency || "USD",
       code: d.code,
       name: d.name,
       type: d.type,
@@ -110,6 +107,7 @@ export default function DiscountsPage() {
     try {
       await discountService.create({
         code: formData.code.toUpperCase().trim(),
+        currency: formData.currency,
         name: formData.name,
         type: formData.type,
         value: Number(formData.value),
@@ -124,8 +122,8 @@ export default function DiscountsPage() {
       toast.success(`Discount coupon "${formData.code}" created!`, "Promotion Published");
       setIsCreateOpen(false);
       loadDiscounts();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to create discount.");
+    } catch (err: unknown) {
+      toast.error(errorMessage(err));
     }
   };
 
@@ -135,6 +133,7 @@ export default function DiscountsPage() {
     try {
       await discountService.update(selectedDiscount.id, {
         code: formData.code.toUpperCase().trim(),
+        currency: formData.currency,
         name: formData.name,
         type: formData.type,
         value: Number(formData.value),
@@ -149,8 +148,8 @@ export default function DiscountsPage() {
       toast.success("Discount promotion updated!", "Changes Saved");
       setIsEditOpen(false);
       loadDiscounts();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to update discount.");
+    } catch (err: unknown) {
+      toast.error(errorMessage(err));
     }
   };
 
@@ -158,11 +157,11 @@ export default function DiscountsPage() {
     if (!selectedDiscount) return;
     try {
       await discountService.delete(selectedDiscount.id);
-      toast.info(`Discount ${selectedDiscount.code} removed.`);
+      toast.info(`Discount ${selectedDiscount.code} archived.`);
       setIsDeleteOpen(false);
       loadDiscounts();
     } catch (err) {
-      toast.error("Failed to delete discount.");
+      toast.error(errorMessage(err));
     }
   };
 
@@ -233,14 +232,16 @@ export default function DiscountsPage() {
       cell: (d) => (
         <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
           <button
-            onClick={() => handleOpenEdit(d)}
+            disabled={!isAdmin}
+                onClick={() => handleOpenEdit(d)}
             title="Edit Campaign"
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
           >
             <Pencil className="w-4 h-4" />
           </button>
           <button
-            onClick={() => handleOpenDelete(d)}
+            disabled={!isAdmin}
+                onClick={() => handleOpenDelete(d)}
             title="Delete Campaign"
             className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
           >
@@ -254,6 +255,7 @@ export default function DiscountsPage() {
   return (
     <AppLayout allowedRoles={["ADMIN", "STAFF"]}>
       <div className="space-y-6">
+        {loadError && <div role="alert" className="p-4 bg-rose-50 text-rose-700 rounded-xl text-sm">{loadError}<button className="ml-3 underline" onClick={() => void loadDiscounts()}>Retry</button></div>}
         <PageHeader
           title="Discounts & Coupons"
           description="Manage promotional discount codes, percentage vouchers, and volume billing incentives."
@@ -263,6 +265,7 @@ export default function DiscountsPage() {
           ]}
           actions={
             <button
+              disabled={!isAdmin}
               onClick={handleOpenCreate}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs sm:text-sm shadow-xs transition-colors"
             >
@@ -286,7 +289,7 @@ export default function DiscountsPage() {
             >
               <option value="all">All Statuses</option>
               <option value="active">Active</option>
-              <option value="expired">Expired</option>
+              
               <option value="disabled">Disabled</option>
             </select>
           }
@@ -309,8 +312,8 @@ export default function DiscountsPage() {
                 Cancel
               </button>
               <button
-                type="button"
-                onClick={handleCreateSubmit}
+                type="submit"
+                form="form-handleCreateSubmit"
                 className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-xs"
               >
                 Create Discount
@@ -318,7 +321,7 @@ export default function DiscountsPage() {
             </>
           }
         >
-          <form onSubmit={handleCreateSubmit} className="space-y-4">
+          <form id="form-handleCreateSubmit" onSubmit={handleCreateSubmit} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">Coupon Code *</label>
@@ -337,9 +340,9 @@ export default function DiscountsPage() {
                 <input
                   type="text"
                   required
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="e.g. Q3 Growth Campaign"
+                  readOnly
+                  value={formData.code}
+                                    placeholder="e.g. Q3 Growth Campaign"
                   className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-slate-900"
                 />
               </div>
@@ -420,6 +423,7 @@ export default function DiscountsPage() {
                 />
               </div>
             </div>
+<label className="block text-xs">Currency<input required minLength={3} maxLength={3} pattern="[A-Z]{3}" className="block w-full border rounded-xl p-2 text-sm" value={formData.currency} onChange={e => setFormData({ ...formData, currency: e.target.value.toUpperCase() })} /></label>
           </form>
         </Modal>
 
@@ -439,8 +443,8 @@ export default function DiscountsPage() {
                 Cancel
               </button>
               <button
-                type="button"
-                onClick={handleEditSubmit}
+                type="submit"
+                form="form-handleEditSubmit"
                 className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-xs"
               >
                 Save Changes
@@ -448,31 +452,32 @@ export default function DiscountsPage() {
             </>
           }
         >
-          <form onSubmit={handleEditSubmit} className="space-y-4">
+          <form id="form-handleEditSubmit" onSubmit={handleEditSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">Campaign Name</label>
                 <input
                   type="text"
                   required
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-slate-900"
+                  readOnly
+                  value={formData.code}
+                                    className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-slate-900"
                 />
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">Status</label>
                 <select
                   value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value as typeof formData.status })}
                   className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-slate-900"
                 >
                   <option value="active">Active</option>
-                  <option value="expired">Expired</option>
+                  
                   <option value="disabled">Disabled</option>
                 </select>
               </div>
             </div>
+<label className="block text-xs">Currency<input required minLength={3} maxLength={3} pattern="[A-Z]{3}" className="block w-full border rounded-xl p-2 text-sm" value={formData.currency} onChange={e => setFormData({ ...formData, currency: e.target.value.toUpperCase() })} /></label>
           </form>
         </Modal>
 
@@ -481,9 +486,9 @@ export default function DiscountsPage() {
           isOpen={isDeleteOpen}
           onClose={() => setIsDeleteOpen(false)}
           onConfirm={handleDeleteConfirm}
-          title="Delete Coupon"
-          message={`Are you sure you want to deactivate promotion "${selectedDiscount?.code}"?`}
-          confirmText="Yes, Delete"
+          title="Archive Coupon"
+          message={`Archive this discount? Historical records are preserved.`}
+          confirmText="Yes, Archive"
         />
       </div>
     </AppLayout>

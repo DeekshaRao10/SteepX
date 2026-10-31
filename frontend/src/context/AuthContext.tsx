@@ -1,141 +1,70 @@
 "use client";
-
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { User, UserRole } from "@/types";
-import { authService, LoginCredentials } from "@/services/auth.service";
+import { authService, LoginCredentials, Registration } from "@/services/auth.service";
+import { session, SESSION_EVENT, ApiError, errorMessage } from "@/services/api";
 import { useToast } from "./ToastContext";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
+import Link from "next/link";
 
 interface AuthContextType {
-  user: User | null;
-  role: UserRole;
-  isLoading: boolean;
-  isAdmin: boolean;
-  isStaff: boolean;
-  isCustomer: boolean;
+  user: User | null; role: UserRole; isLoading: boolean;
+  isAdmin: boolean; isStaff: boolean; isCustomer: boolean;
   login: (credentials: LoginCredentials) => Promise<void>;
-  register: (data: { name: string; email: string; company?: string; role?: UserRole }) => Promise<void>;
+  register: (data: Registration) => Promise<void>;
   logout: () => Promise<void>;
-  switchRole: (role: UserRole) => Promise<void>;
-  canAccess: (allowedRoles: UserRole[]) => boolean;
+  canAccess: (roles: UserRole[]) => boolean;
 }
-
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
+const publicPaths = ["/", "/login", "/register", "/forgot-password"];
+const operatorPaths = ["/products", "/plans", "/customers", "/discounts", "/taxes"];
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [sessionError, setSessionError] = useState("");
+  const [retry, setRetry] = useState(0);
   const { toast } = useToast();
   const router = useRouter();
-
-  // Load initial user on mount
+  const pathname = usePathname();
+  const publicPage = publicPaths.includes(pathname);
   useEffect(() => {
-    async function loadUser() {
-      try {
-        const currentUser = await authService.getCurrentUser();
-        setUser(currentUser);
-      } catch (err) {
-        console.error("Failed to load user session", err);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    loadUser();
-  }, []);
-
+    let alive = true;
+    authService.getCurrentUser().then(value => { if (alive) { setUser(value); setSessionError(""); } })
+      .catch(error => { if (alive && !(error instanceof ApiError && error.status === 401)) setSessionError(errorMessage(error)); })
+      .finally(() => { if (alive) setIsLoading(false); });
+    const ended = () => { setUser(null); setSessionError(""); };
+    window.addEventListener(SESSION_EVENT, ended);
+    return () => { alive = false; window.removeEventListener(SESSION_EVENT, ended); };
+  }, [retry]);
+  useEffect(() => {
+    if (!isLoading && !user && !publicPage && !sessionError) router.replace("/login");
+  }, [isLoading, user, publicPage, sessionError, router]);
+  useEffect(() => {
+    if (!user) return;
+    const timer = window.setTimeout(() => session.clear(), Math.max(0, session.expiresAt() - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [user]);
   const login = async (credentials: LoginCredentials) => {
     setIsLoading(true);
-    try {
-      const { user: loggedInUser } = await authService.login(credentials);
-      setUser(loggedInUser);
-      toast.success(`Welcome back, ${loggedInUser.name}!`, "Signed In");
-      router.push("/dashboard");
-    } catch (err: any) {
-      toast.error(err.message || "Failed to sign in. Please verify credentials.", "Login Error");
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
+    try { const result = await authService.login(credentials); setUser(result.user); setSessionError(""); router.replace("/dashboard"); }
+    finally { setIsLoading(false); }
   };
-
-  const register = async (data: { name: string; email: string; company?: string; role?: UserRole }) => {
+  const register = async (data: Registration) => {
     setIsLoading(true);
-    try {
-      const { user: registeredUser } = await authService.register(data);
-      setUser(registeredUser);
-      toast.success(`Account created for ${registeredUser.name}!`, "Registration Complete");
-      router.push("/dashboard");
-    } catch (err: any) {
-      toast.error(err.message || "Failed to register.", "Registration Error");
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
+    try { const result = await authService.register(data); setUser(result.user); setSessionError(""); router.replace("/dashboard"); }
+    finally { setIsLoading(false); }
   };
-
   const logout = async () => {
-    setIsLoading(true);
-    try {
-      await authService.logout();
-      setUser(null);
-      toast.info("You have been signed out successfully.", "Signed Out");
-      router.push("/login");
-    } finally {
-      setIsLoading(false);
-    }
+    try { await authService.logout(); setUser(null); router.replace("/login"); }
+    catch (error) { if (error instanceof ApiError && error.status === 401) { setUser(null); router.replace("/login"); }
+      else toast.error(errorMessage(error), "Could not sign out; please retry"); }
   };
-
-  const switchRole = async (targetRole: UserRole) => {
-    setIsLoading(true);
-    try {
-      const updated = await authService.switchRole(targetRole);
-      setUser(updated);
-      toast.info(`Switched role to ${targetRole} for demo simulation.`, "Role Changed");
-    } catch (err: any) {
-      toast.error("Failed to switch role.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const role: UserRole = user?.role || "ADMIN";
-  const isAdmin = role === "ADMIN";
-  const isStaff = role === "STAFF";
-  const isCustomer = role === "CUSTOMER";
-
-  const canAccess = useCallback(
-    (allowedRoles: UserRole[]) => {
-      return allowedRoles.includes(role);
-    },
-    [role]
-  );
-
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        role,
-        isLoading,
-        isAdmin,
-        isStaff,
-        isCustomer,
-        login,
-        register,
-        logout,
-        switchRole,
-        canAccess,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
+  const role: UserRole = user?.role || "CUSTOMER";
+  const canAccess = useCallback((roles: UserRole[]) => !!user && roles.includes(user.role), [user]);
+  const forbidden = !!user && ((operatorPaths.some(path => pathname === path || pathname.startsWith(path + "/")) && role === "CUSTOMER") || (pathname.startsWith("/settings") && role !== "ADMIN"));
+  let content = children;
+  if (!publicPage && (isLoading || !user)) content = <div className="p-12 text-center text-slate-600" role="status">{sessionError || "Loading your session?"}{sessionError && <button className="ml-3 text-indigo-600 underline" onClick={() => { setIsLoading(true); setRetry(value => value + 1); }}>Retry</button>}</div>;
+  else if (forbidden) content = <div className="p-12 text-center"><h1 className="text-xl font-bold">Access restricted</h1><p className="my-4">Your account cannot access this page.</p><Link href="/dashboard" className="text-indigo-600">Back to dashboard</Link></div>;
+  return <AuthContext.Provider value={{ user, role, isLoading, isAdmin: !!user && role === "ADMIN", isStaff: !!user && role === "STAFF", isCustomer: !!user && role === "CUSTOMER", login, register, logout, canAccess }}>{content}</AuthContext.Provider>;
 }
-
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
-  return context;
-}
-
+export function useAuth() { const value = useContext(AuthContext); if (!value) throw new Error("AuthProvider is required"); return value; }

@@ -38,7 +38,7 @@ const STORAGE_KEYS = {
 };
 
 // In-memory fallback for SSR
-let memoryStore: Record<string, any> = {
+let memoryStore: Record<string, unknown> = {
   [STORAGE_KEYS.PRODUCTS]: INITIAL_PRODUCTS,
   [STORAGE_KEYS.PLANS]: INITIAL_PLANS,
   [STORAGE_KEYS.CUSTOMERS]: INITIAL_CUSTOMERS,
@@ -57,7 +57,7 @@ function isClient(): boolean {
 
 function getItem<T>(key: string, defaultValue: T): T {
   if (!isClient()) {
-    return memoryStore[key] ?? defaultValue;
+    return (memoryStore[key] as T | undefined) ?? defaultValue;
   }
   try {
     const raw = window.localStorage.getItem(key);
@@ -406,8 +406,8 @@ export const storage = {
     let subs = storage.getSubscriptions();
     let invoices = storage.getInvoices();
     let payments = storage.getPayments();
-    let customers = storage.getCustomers();
-    let plans = storage.getPlans();
+    const customers = storage.getCustomers();
+    const plans = storage.getPlans();
 
     if (customerId) {
       subs = subs.filter((s) => s.customerId === customerId);

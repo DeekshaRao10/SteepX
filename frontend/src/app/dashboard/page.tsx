@@ -5,6 +5,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { StatCard } from "@/components/common/StatCard";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { useAuth } from "@/context/AuthContext";
+import { errorMessage } from "@/services/api";
 import { dashboardService } from "@/services/dashboard.service";
 import { subscriptionService } from "@/services/subscription.service";
 import { invoiceService } from "@/services/invoice.service";
@@ -50,17 +51,20 @@ export default function DashboardPage() {
   const [recentSubscriptions, setRecentSubscriptions] = useState<Subscription[]>([]);
   const [recentInvoices, setRecentInvoices] = useState<Invoice[]>([]);
   const [recentPayments, setRecentPayments] = useState<Payment[]>([]);
+  const [currency, setCurrency] = useState("USD");
+  const [error, setError] = useState("");
+  const [retry, setRetry] = useState(0);
   const [timeRange, setTimeRange] = useState("30d");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadDashboardData() {
-      setLoading(true);
+      setLoading(true); setError("");
       try {
         const [dashStats, rev, dist, subs, invs, pays] = await Promise.all([
-          dashboardService.getStats(customerId),
-          dashboardService.getMonthlyRevenue(),
-          dashboardService.getStatusDistribution(),
+          dashboardService.getStats(customerId, timeRange, currency),
+          dashboardService.getMonthlyRevenue(timeRange, currency),
+          dashboardService.getStatusDistribution(currency),
           subscriptionService.getAll(customerId),
           invoiceService.getAll(customerId),
           paymentService.getAll(customerId),
@@ -73,14 +77,17 @@ export default function DashboardPage() {
         setRecentInvoices(invs.slice(0, 5));
         setRecentPayments(pays.slice(0, 4));
       } catch (err) {
-        console.error("Failed to load dashboard data", err);
+        setError(errorMessage(err));
       } finally {
         setLoading(false);
       }
     }
 
     loadDashboardData();
-  }, [customerId]);
+  }, [customerId, timeRange, currency, retry]);
+
+  if (loading) return <AppLayout><p role="status" className="p-8 text-slate-600">Loading dashboard?</p></AppLayout>;
+  if (error) return <AppLayout><div role="alert" className="p-8 text-rose-700">{error}<button className="ml-3 underline" onClick={() => setRetry(value => value + 1)}>Retry</button></div></AppLayout>;
 
   return (
     <AppLayout>
@@ -99,11 +106,12 @@ export default function DashboardPage() {
             <p className="text-xs sm:text-sm text-slate-500 mt-1">
               {isCustomer
                 ? `Manage your active subscriptions, invoices, and billing history for ${user?.company || "your organization"}.`
-                : "Real-time subscription lifecycle, MRR trends, and financial health telemetry."}
+                : "Real-time subscription lifecycle, collected revenue trends, and financial health telemetry."}
             </p>
           </div>
 
           <div className="flex items-center gap-3">
+            <label className="text-xs">Currency<select aria-label="Dashboard currency" className="ml-2 p-2 bg-white border rounded-xl" value={currency} onChange={e => setCurrency(e.target.value)}>{[...new Set(["USD", "EUR", "GBP", "INR", ...recentInvoices.map(i => i.currency || "USD")])].map(code => <option key={code}>{code}</option>)}</select></label>
             {/* Date Range Selector */}
             <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 text-xs font-medium text-slate-600 shadow-2xs">
               <Calendar className="w-3.5 h-3.5 ml-2 text-slate-400" />
@@ -136,32 +144,24 @@ export default function DashboardPage() {
           <StatCard
             title="Active Subscriptions"
             value={stats?.totalActiveSubscriptions ?? 0}
-            change={12.5}
-            changePeriod="vs last month"
             icon={<Repeat className="w-5 h-5 text-indigo-600" />}
           />
 
           <StatCard
             title={isCustomer ? "Total Paid to Date" : "Revenue Collected"}
-            value={formatCurrency(stats?.revenueCollected ?? 0)}
-            change={18.2}
-            changePeriod="vs last month"
+            value={formatCurrency(stats?.revenueCollected ?? 0, currency)}
             icon={<DollarSign className="w-5 h-5 text-emerald-600" />}
           />
 
           <StatCard
             title="Outstanding Balance"
-            value={formatCurrency(stats?.outstandingAmount ?? 0)}
-            change={-4.5}
-            changePeriod="unpaid invoices"
+            value={formatCurrency(stats?.outstandingAmount ?? 0, currency)}
             icon={<Clock className="w-5 h-5 text-amber-600" />}
           />
 
           <StatCard
             title="Overdue Invoices"
             value={stats?.overdueInvoicesCount ?? 0}
-            change={stats?.overdueInvoicesCount ? stats.overdueInvoicesCount : 0}
-            changePeriod="requiring attention"
             icon={<AlertCircle className="w-5 h-5 text-rose-600" />}
           />
         </div>
@@ -205,7 +205,7 @@ export default function DashboardPage() {
                     <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fill: "#64748b", fontSize: 11 }} />
                     <YAxis tickLine={false} axisLine={false} tick={{ fill: "#64748b", fontSize: 11 }} tickFormatter={(v) => `$${v}`} />
                     <Tooltip
-                      formatter={(val: any) => [formatCurrency(Number(val)), ""]}
+                      formatter={(val) => [formatCurrency(Number(val), currency), ""]}
                       contentStyle={{ backgroundColor: "#ffffff", borderRadius: "12px", border: "1px solid #e2e8f0", fontSize: "12px" }}
                     />
                     <Area type="monotone" dataKey="invoiced" stroke="#93c5fd" strokeWidth={2} fillOpacity={1} fill="url(#colorBilled)" />
@@ -240,7 +240,7 @@ export default function DashboardPage() {
                       ))}
                     </Pie>
                     <Tooltip
-                      formatter={(val: any, name: any) => [`${val} subscriptions`, name]}
+                      formatter={(val, name) => [`${val} subscriptions`, name]}
                       contentStyle={{ backgroundColor: "#ffffff", borderRadius: "12px", border: "1px solid #e2e8f0", fontSize: "12px" }}
                     />
                   </PieChart>
@@ -318,7 +318,7 @@ export default function DashboardPage() {
                         <StatusBadge status={sub.status} />
                       </td>
                       <td className="py-3 px-4 text-right font-bold text-slate-900 text-xs">
-                        {formatCurrency(sub.amount)}
+                        {formatCurrency(sub.amount, sub.currency)}
                       </td>
                     </tr>
                   ))}
@@ -367,7 +367,7 @@ export default function DashboardPage() {
                         <StatusBadge status={inv.status} />
                       </td>
                       <td className="py-3 px-4 text-right font-bold text-slate-900 text-xs">
-                        {formatCurrency(inv.totalAmount)}
+                        {formatCurrency(inv.totalAmount, inv.currency)}
                       </td>
                     </tr>
                   ))}
@@ -377,31 +377,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Quick Demo Flow Guidance Banner */}
-        {!isCustomer && (
-          <div className="p-5 rounded-2xl bg-indigo-50/60 border border-indigo-100 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                <TrendingUp className="w-5 h-5" />
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-indigo-950">End-to-End Subscription Lifecycle Walkthrough</h4>
-                <p className="text-xs text-indigo-700/80 mt-0.5">
-                  1. Add Product → 2. Create Plan → 3. Add Customer → 4. Issue Subscription → 5. Generate Invoice → 6. Record Payment.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              <Link
-                href="/products"
-                className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs transition-colors"
-              >
-                Start with Products
-              </Link>
-            </div>
-          </div>
-        )}
       </div>
     </AppLayout>
   );

@@ -1,6 +1,6 @@
 import { cn as baseCn } from "cn";
 
-export function cn(...inputs: any[]) {
+export function cn(...inputs: Parameters<typeof baseCn>) {
   return baseCn(...inputs);
 }
 
@@ -15,7 +15,7 @@ export function formatCurrency(amount: number, currency: string = "USD"): string
 
 export function formatDate(dateStr: string | Date): string {
   if (!dateStr) return "-";
-  const date = typeof dateStr === "string" ? new Date(dateStr) : dateStr;
+  const date = typeof dateStr === "string" ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? dateStr + "T00:00:00" : dateStr) : dateStr;
   if (isNaN(date.getTime())) return String(dateStr);
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -26,7 +26,7 @@ export function formatDate(dateStr: string | Date): string {
 
 export function formatDateTime(dateStr: string | Date): string {
   if (!dateStr) return "-";
-  const date = typeof dateStr === "string" ? new Date(dateStr) : dateStr;
+  const date = typeof dateStr === "string" ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? dateStr + "T00:00:00" : dateStr) : dateStr;
   if (isNaN(date.getTime())) return String(dateStr);
   return new Intl.DateTimeFormat("en-US", {
     month: "short",

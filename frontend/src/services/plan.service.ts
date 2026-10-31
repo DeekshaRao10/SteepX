@@ -1,51 +1,17 @@
 import { SubscriptionPlan } from "@/types";
-import { apiClient, USE_MOCK, delay } from "./api";
-import { storage } from "./storage";
-
+import { PlanResponse, PlanWrite } from "@/types/api";
+import { apiClient, listAll } from "./api";
+import { mapPlan } from "./mappers";
+const payload = (data: SubscriptionPlan | Omit<SubscriptionPlan, "id" | "createdAt">): PlanWrite => ({
+  name: data.name, product_id: data.productId, tax_rate_id: data.taxRateId || null,
+  price: data.price, billing_interval: data.billingInterval, minimum_quantity: data.minimumQuantity,
+  available_from: data.availabilityStartDate || null, available_until: data.availabilityEndDate || null,
+  end_behavior: data.endBehavior === "auto_renew" ? "renew" : "close", description: data.features.join("\n"),
+  is_active: data.status === "active" });
 export const planService = {
-  getAll: async (): Promise<SubscriptionPlan[]> => {
-    if (USE_MOCK) {
-      await delay(150);
-      return storage.getPlans();
-    }
-    const response = await apiClient.get<SubscriptionPlan[]>("/plans");
-    return response.data;
-  },
-
-  getById: async (id: string): Promise<SubscriptionPlan | undefined> => {
-    if (USE_MOCK) {
-      await delay(150);
-      return storage.getPlanById(id);
-    }
-    const response = await apiClient.get<SubscriptionPlan>(`/plans/${id}`);
-    return response.data;
-  },
-
-  create: async (data: Omit<SubscriptionPlan, "id" | "createdAt">): Promise<SubscriptionPlan> => {
-    if (USE_MOCK) {
-      await delay(200);
-      return storage.createPlan(data);
-    }
-    const response = await apiClient.post<SubscriptionPlan>("/plans", data);
-    return response.data;
-  },
-
-  update: async (id: string, updates: Partial<SubscriptionPlan>): Promise<SubscriptionPlan> => {
-    if (USE_MOCK) {
-      await delay(200);
-      return storage.updatePlan(id, updates);
-    }
-    const response = await apiClient.put<SubscriptionPlan>(`/plans/${id}`, updates);
-    return response.data;
-  },
-
-  delete: async (id: string): Promise<boolean> => {
-    if (USE_MOCK) {
-      await delay(200);
-      return storage.deletePlan(id);
-    }
-    await apiClient.delete(`/plans/${id}`);
-    return true;
-  },
+  async getAll() { return (await listAll<PlanResponse>("/plans")).map(mapPlan); },
+  async getById(id: string) { return mapPlan((await apiClient.get<PlanResponse>(`/plans/${id}`)).data); },
+  async create(data: Omit<SubscriptionPlan, "id" | "createdAt">) { return mapPlan((await apiClient.post<PlanResponse>("/plans", payload(data))).data); },
+  async update(id: string, updates: Partial<SubscriptionPlan>) { return mapPlan((await apiClient.put<PlanResponse>(`/plans/${id}`, payload({ ...await planService.getById(id), ...updates }))).data); },
+  async delete(id: string) { await apiClient.delete(`/plans/${id}`); return true; },
 };
-

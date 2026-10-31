@@ -14,6 +14,8 @@ interface PageHeaderProps {
   actions?: React.ReactNode;
 }
 
+
+
 export function PageHeader({ title, description, breadcrumbs, actions }: PageHeaderProps) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-6 border-b border-slate-200">
@@ -33,6 +35,8 @@ export function PageHeader({ title, description, breadcrumbs, actions }: PageHea
               </React.Fragment>
             ))}
           </nav>
+
+
         )}
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">{title}</h1>
         {description && <p className="text-sm text-slate-500 mt-1">{description}</p>}

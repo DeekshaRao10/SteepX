@@ -1,4 +1,5 @@
 "use client";
+import { errorMessage } from "@/services/api";
 
 import React, { useState } from "react";
 import Link from "next/link";
@@ -11,7 +12,6 @@ export default function RegisterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [company, setCompany] = useState("");
-  const [role, setRole] = useState<UserRole>("ADMIN");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
@@ -29,9 +29,9 @@ export default function RegisterPage() {
     }
 
     try {
-      await register({ name, email, company, role });
-    } catch (err: any) {
-      setError(err.message || "Registration failed.");
+      await register({ name, email, company, password });
+    } catch (err: unknown) {
+      setError(errorMessage(err));
     }
   };
 
@@ -47,7 +47,7 @@ export default function RegisterPage() {
           </span>
         </Link>
         <h2 className="mt-4 text-2xl font-bold tracking-tight text-slate-900">
-          Create your SteepX workspace
+          Create your customer account
         </h2>
         <p className="mt-1.5 text-xs text-slate-500">
           Start managing recurring billing & SaaS subscriptions with Brightloop
@@ -62,7 +62,7 @@ export default function RegisterPage() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form id="form-handleSubmit" onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">Full name</label>
               <div className="relative">
@@ -109,28 +109,18 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Role tier</label>
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value as UserRole)}
-                className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-900"
-              >
-                <option value="ADMIN">Admin (Full Workspace Control)</option>
-                <option value="STAFF">Staff (Operations & Billing)</option>
-                <option value="CUSTOMER">Customer (Self-service Portal)</option>
-              </select>
-            </div>
-
-            <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">Password</label>
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
+                  minLength={9}
+                  maxLength={128}
+                  autoComplete="new-password"
                   type="password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Minimum 8 characters"
+                  placeholder="9+ characters, uppercase, lowercase, and symbol"
                   className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-900"
                 />
               </div>

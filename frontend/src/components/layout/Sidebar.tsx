@@ -38,6 +38,9 @@ const NAV_ITEMS: NavItem[] = [
   // CORE
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["ADMIN", "STAFF", "CUSTOMER"], category: "Overview" },
   
+  { name: "My Quotations", href: "/quotations", icon: FileSpreadsheet, roles: ["CUSTOMER"], category: "Account" },
+  { name: "Billing Profile", href: "/profile", icon: Users, roles: ["CUSTOMER"], category: "Account" },
+  { name: "Tax Rates", href: "/taxes", icon: Percent, roles: ["ADMIN", "STAFF"], category: "Product Catalog" },
   // CUSTOMER PORTAL SPECIFIC
   { name: "My Subscriptions", href: "/subscriptions", icon: Repeat, roles: ["CUSTOMER"], category: "Account" },
   { name: "My Invoices", href: "/invoices", icon: Receipt, roles: ["CUSTOMER"], category: "Account" },

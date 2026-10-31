@@ -27,7 +27,7 @@ interface DataTableProps<T> {
   onRowClick?: (item: T) => void;
 }
 
-export function DataTable<T extends Record<string, any>>({
+export function DataTable<T extends { id?: string }>({
   data,
   columns,
   searchPlaceholder = "Search records...",
@@ -41,7 +41,7 @@ export function DataTable<T extends Record<string, any>>({
   onRowClick,
 }: DataTableProps<T>) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
+  const [requestedPage, setCurrentPage] = useState(1);
 
   // Filtered data based on search
   const filteredData = useMemo(() => {
@@ -68,17 +68,11 @@ export function DataTable<T extends Record<string, any>>({
 
   // Pagination calculation
   const totalPages = Math.max(1, Math.ceil(filteredData.length / pageSize));
+  const currentPage = Math.min(requestedPage, totalPages);
   const paginatedData = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
     return filteredData.slice(start, start + pageSize);
   }, [filteredData, currentPage, pageSize]);
-
-  // Adjust page if search reduces total pages
-  React.useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(1);
-    }
-  }, [totalPages, currentPage]);
 
   if (isLoading) {
     return <TableSkeleton rows={pageSize} cols={columns.length} />;
@@ -94,7 +88,7 @@ export function DataTable<T extends Record<string, any>>({
             <input
               type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
               placeholder={searchPlaceholder}
               className="w-full pl-9 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-900 placeholder:text-slate-400"
             />
@@ -163,7 +157,7 @@ export function DataTable<T extends Record<string, any>>({
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
               disabled={currentPage === 1}
               className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1 font-medium"
             >
@@ -174,7 +168,7 @@ export function DataTable<T extends Record<string, any>>({
               {currentPage} / {totalPages}
             </span>
             <button
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
               disabled={currentPage === totalPages}
               className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1 font-medium"
             >

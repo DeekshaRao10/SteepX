@@ -1,4 +1,5 @@
 "use client";
+import { errorMessage } from "@/services/api";
 
 import React, { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -7,6 +8,8 @@ import { DataTable, Column } from "@/components/common/DataTable";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { Modal } from "@/components/common/Modal";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { taxService } from "@/services/discount.service";
+import { TaxResponse } from "@/types/api";
 import { planService } from "@/services/plan.service";
 import { productService } from "@/services/product.service";
 import { SubscriptionPlan, BillingInterval, PlanEndBehavior, Product } from "@/types";
@@ -27,8 +30,11 @@ import {
 
 export default function SubscriptionPlansPage() {
   const { toast } = useToast();
+  const [taxes, setTaxes] = useState<TaxResponse[]>([]);
+  const [taxRateId, setTaxRateId] = useState("");
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [loadError, setLoadError] = useState("");
   const [loading, setLoading] = useState(true);
 
   // Filters & View mode
@@ -57,40 +63,20 @@ export default function SubscriptionPlansPage() {
     status: "active" as "active" | "inactive",
   });
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const [plansData, prodsData] = await Promise.all([
-        planService.getAll(),
-        productService.getAll(),
-      ]);
-      setPlans(plansData);
-      setProducts(prodsData);
-      if (prodsData.length > 0 && !formData.productId) {
-        setFormData((prev) => ({
-          ...prev,
-          productId: prodsData[0].id,
-          productName: prodsData[0].name,
-        }));
-      }
-    } catch (err) {
-      toast.error("Failed to load subscription plans.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const loadData = () => Promise.all([planService.getAll(), productService.getAll(), taxService.getAll()]).then(([plansData, prodsData, taxData]) => { setPlans(plansData); setProducts(prodsData); setTaxes(taxData); if (prodsData.length && !formData.productId) setFormData(previous => ({ ...previous, productId: prodsData[0].id, productName: prodsData[0].name })); setLoadError(""); }).catch((error: unknown) => { setLoadError(errorMessage(error)); }).finally(() => setLoading(false));
 
   useEffect(() => {
     loadData();
   }, []);
 
   const handleOpenCreate = () => {
+    setTaxRateId("");
     const defaultProd = products[0];
     setFormData({
       name: "",
-      code: `PLAN-${Math.floor(100 + Math.random() * 900)}`,
-      productId: defaultProd?.id || "PROD-101",
-      productName: defaultProd?.name || "Brightloop Cloud Core",
+      code: "Assigned automatically",
+      productId: defaultProd?.id || "",
+      productName: defaultProd?.name || "",
       billingInterval: "monthly",
       price: 199,
       minimumQuantity: 1,
@@ -105,6 +91,7 @@ export default function SubscriptionPlansPage() {
 
   const handleOpenEdit = (plan: SubscriptionPlan) => {
     setSelectedPlan(plan);
+    setTaxRateId(plan.taxRateId || "");
     setFormData({
       name: plan.name,
       code: plan.code,
@@ -124,6 +111,7 @@ export default function SubscriptionPlansPage() {
 
   const handleOpenDelete = (plan: SubscriptionPlan) => {
     setSelectedPlan(plan);
+    setTaxRateId(plan.taxRateId || "");
     setIsDeleteOpen(true);
   };
 
@@ -147,6 +135,7 @@ export default function SubscriptionPlansPage() {
 
       await planService.create({
         name: formData.name,
+        taxRateId,
         code: formData.code,
         productId: formData.productId,
         productName: formData.productName,
@@ -163,8 +152,8 @@ export default function SubscriptionPlansPage() {
       toast.success(`Plan "${formData.name}" published!`, "Plan Created");
       setIsCreateOpen(false);
       loadData();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to create plan.");
+    } catch (err: unknown) {
+      toast.error(errorMessage(err));
     }
   };
 
@@ -179,6 +168,7 @@ export default function SubscriptionPlansPage() {
 
       await planService.update(selectedPlan.id, {
         name: formData.name,
+        taxRateId,
         code: formData.code,
         productId: formData.productId,
         productName: formData.productName,
@@ -195,8 +185,8 @@ export default function SubscriptionPlansPage() {
       toast.success(`Plan "${formData.name}" updated!`, "Changes Saved");
       setIsEditOpen(false);
       loadData();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to update plan.");
+    } catch (err: unknown) {
+      toast.error(errorMessage(err));
     }
   };
 
@@ -204,11 +194,11 @@ export default function SubscriptionPlansPage() {
     if (!selectedPlan) return;
     try {
       await planService.delete(selectedPlan.id);
-      toast.info(`Plan "${selectedPlan.name}" removed.`);
+      toast.info(`Plan "${selectedPlan.name}" archived.`);
       setIsDeleteOpen(false);
       loadData();
-    } catch (err: any) {
-      toast.error("Failed to delete plan.");
+    } catch (err: unknown) {
+      toast.error(errorMessage(err));
     }
   };
 
@@ -243,7 +233,7 @@ export default function SubscriptionPlansPage() {
       header: "Price",
       cell: (p) => (
         <span className="font-bold text-slate-900 text-xs sm:text-sm">
-          {formatCurrency(p.price)} / {p.billingInterval.replace("ly", "")}
+          {formatCurrency(p.price, p.currency)} / {p.billingInterval.replace("ly", "")}
         </span>
       ),
     },
@@ -271,7 +261,7 @@ export default function SubscriptionPlansPage() {
           </button>
           <button
             onClick={() => handleOpenDelete(p)}
-            title="Delete Plan"
+            title="Archive Plan"
             className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
           >
             <Trash2 className="w-4 h-4" />
@@ -284,6 +274,7 @@ export default function SubscriptionPlansPage() {
   return (
     <AppLayout allowedRoles={["ADMIN", "STAFF"]}>
       <div className="space-y-6">
+        {loadError && <div role="alert" className="p-4 bg-rose-50 text-rose-700 rounded-xl text-sm">{loadError}<button className="ml-3 underline" onClick={() => void loadData()}>Retry</button></div>}
         <PageHeader
           title="Subscription Plans & Pricing"
           description="Configure recurring pricing packages, billing intervals, renewal rules, and feature entitlements."
@@ -364,7 +355,7 @@ export default function SubscriptionPlansPage() {
 
                   <div className="mt-4 mb-6">
                     <span className="text-3xl font-extrabold text-slate-900">
-                      {formatCurrency(plan.price)}
+                      {formatCurrency(plan.price, plan.currency)}
                     </span>
                     <span className="text-xs text-slate-500 font-medium ml-1">
                       /{plan.billingInterval.replace("ly", "")}
@@ -436,8 +427,8 @@ export default function SubscriptionPlansPage() {
                 Cancel
               </button>
               <button
-                type="button"
-                onClick={handleCreateSubmit}
+                type="submit"
+                form="form-handleCreateSubmit"
                 className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-xs"
               >
                 Publish Plan
@@ -445,7 +436,7 @@ export default function SubscriptionPlansPage() {
             </>
           }
         >
-          <form onSubmit={handleCreateSubmit} className="space-y-4">
+          <form id="form-handleCreateSubmit" onSubmit={handleCreateSubmit} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">Plan Name *</label>
@@ -464,6 +455,7 @@ export default function SubscriptionPlansPage() {
                 <input
                   type="text"
                   required
+                  readOnly
                   value={formData.code}
                   onChange={(e) => setFormData({ ...formData, code: e.target.value })}
                   className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-slate-900"
@@ -475,13 +467,14 @@ export default function SubscriptionPlansPage() {
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">Associated Product *</label>
                 <select
+                  disabled={isEditOpen}
                   value={formData.productId}
                   onChange={(e) => handleProductSelect(e.target.value)}
                   className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-slate-900"
                 >
                   {products.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} ({formatCurrency(p.salesPrice)})
+                      {p.name} ({formatCurrency(p.salesPrice, p.currency)})
                     </option>
                   ))}
                 </select>
@@ -490,6 +483,7 @@ export default function SubscriptionPlansPage() {
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">Billing Cadence *</label>
                 <select
+                  disabled={isEditOpen}
                   value={formData.billingInterval}
                   onChange={(e) => setFormData({ ...formData, billingInterval: e.target.value as BillingInterval })}
                   className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-slate-900"
@@ -535,7 +529,7 @@ export default function SubscriptionPlansPage() {
                   className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-slate-900"
                 >
                   <option value="auto_renew">Auto-Renew</option>
-                  <option value="pause">Pause</option>
+                  
                   <option value="cancel">Cancel</option>
                 </select>
               </div>
@@ -574,6 +568,7 @@ export default function SubscriptionPlansPage() {
                 className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-slate-900"
               />
             </div>
+            <label className="block text-xs font-medium text-slate-700">Tax rate<select value={taxRateId} onChange={e => setTaxRateId(e.target.value)} className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-xl text-sm"><option value="">No tax</option>{taxes.filter(t => t.is_active || t.id === taxRateId).map(t => <option key={t.id} value={t.id}>{t.name} ({t.rate}%) {t.is_active ? "" : "? Inactive"}</option>)}</select></label>
           </form>
         </Modal>
 
@@ -593,8 +588,8 @@ export default function SubscriptionPlansPage() {
                 Cancel
               </button>
               <button
-                type="button"
-                onClick={handleEditSubmit}
+                type="submit"
+                form="form-handleEditSubmit"
                 className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-xs"
               >
                 Save Plan Changes
@@ -602,7 +597,7 @@ export default function SubscriptionPlansPage() {
             </>
           }
         >
-          <form onSubmit={handleEditSubmit} className="space-y-4">
+          <form id="form-handleEditSubmit" onSubmit={handleEditSubmit} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">Plan Name</label>
@@ -620,6 +615,7 @@ export default function SubscriptionPlansPage() {
                 <input
                   type="text"
                   required
+                  readOnly
                   value={formData.code}
                   onChange={(e) => setFormData({ ...formData, code: e.target.value })}
                   className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-slate-900"
@@ -649,7 +645,7 @@ export default function SubscriptionPlansPage() {
                   className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-slate-900"
                 >
                   <option value="auto_renew">Auto-Renew</option>
-                  <option value="pause">Pause</option>
+                  
                   <option value="cancel">Cancel</option>
                 </select>
               </div>
@@ -666,6 +662,7 @@ export default function SubscriptionPlansPage() {
                 className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-slate-900"
               />
             </div>
+            <label className="block text-xs font-medium text-slate-700">Tax rate<select value={taxRateId} onChange={e => setTaxRateId(e.target.value)} className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-xl text-sm"><option value="">No tax</option>{taxes.filter(t => t.is_active || t.id === taxRateId).map(t => <option key={t.id} value={t.id}>{t.name} ({t.rate}%) {t.is_active ? "" : "? Inactive"}</option>)}</select></label>
           </form>
         </Modal>
 
@@ -674,9 +671,9 @@ export default function SubscriptionPlansPage() {
           isOpen={isDeleteOpen}
           onClose={() => setIsDeleteOpen(false)}
           onConfirm={handleDeleteConfirm}
-          title="Delete Subscription Plan"
-          message={`Are you sure you want to remove "${selectedPlan?.name}"?`}
-          confirmText="Yes, Delete Plan"
+          title="Archive Subscription Plan"
+          message={`Archive this plan? Historical records are preserved.`}
+          confirmText="Yes, Archive Plan"
         />
       </div>
     </AppLayout>

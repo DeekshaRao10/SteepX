@@ -16,7 +16,7 @@ interface AppLayoutProps {
 export function AppLayout({ children, allowedRoles }: AppLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const { role, switchRole } = useAuth();
+  const { role } = useAuth();
 
   // Role access check
   const isAuthorized = !allowedRoles || allowedRoles.includes(role);
@@ -53,12 +53,7 @@ export function AppLayout({ children, allowedRoles }: AppLayoutProps) {
                   <ArrowLeft className="w-4 h-4" />
                   Back to Dashboard
                 </Link>
-                <button
-                  onClick={() => switchRole("ADMIN")}
-                  className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-colors shadow-xs"
-                >
-                  Switch to Admin Role
-                </button>
+
               </div>
             </div>
           ) : (
