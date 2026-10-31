@@ -3,6 +3,7 @@
 A high-performance, full-stack subscription billing, catalog management, and recurring revenue engine built with **FastAPI**, **Next.js 16**, **Tailwind CSS v4**, and **PostgreSQL 17**.
 
 ---
+Demo video - https://drive.google.com/file/d/1GHZEowcwEynWKuLepXQIpXneNb4y6WS-/view?usp=drive_link
 
 ## 📖 Overview
 
@@ -227,6 +228,4 @@ python -m scripts.verify_development_demo
 
 ---
 
-## 📄 License
 
-This project is licensed under the MIT License.
