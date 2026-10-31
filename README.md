@@ -1,3 +1,4 @@
+SUBSCRIPTION MANAGEMENT SYSTEM
 <!--
  backend running : 
     cd backend
@@ -8,4 +9,10 @@
  <!-- 
  Running Docker : 
  docker compose up -d postgres
-  -->
+  ---->
+
+  <!-- 
+  Starting the Frontend :
+   npm run dev
+
+   -->
