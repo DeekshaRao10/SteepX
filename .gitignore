@@ -87,3 +87,6 @@ coverage/
 # Docker overrides
 # =========================
 docker-compose.override.yml
+
+backend/docs
+backend/README.md
