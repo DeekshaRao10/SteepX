@@ -1,4 +1,5 @@
 "use client";
+import { errorMessage } from "@/services/api";
 
 import React, { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -33,6 +34,7 @@ import {
 export default function CustomersPage() {
   const { toast } = useToast();
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [loadError, setLoadError] = useState("");
   const [loading, setLoading] = useState(true);
 
   // Status Filter
@@ -51,6 +53,8 @@ export default function CustomersPage() {
   const [customerPayments, setCustomerPayments] = useState<Payment[]>([]);
   const [profileTab, setProfileTab] = useState<"subs" | "invoices" | "payments">("subs");
 
+  const [customerPassword, setCustomerPassword] = useState("");
+
   // Form State
   const [formData, setFormData] = useState({
     name: "",
@@ -67,23 +71,14 @@ export default function CustomersPage() {
     notes: "",
   });
 
-  const loadCustomers = async () => {
-    setLoading(true);
-    try {
-      const data = await customerService.getAll();
-      setCustomers(data);
-    } catch (err) {
-      toast.error("Failed to load customers.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const loadCustomers = () => customerService.getWithMetrics().then((data) => { setCustomers(data); setLoadError(""); }).catch((error: unknown) => { setLoadError(errorMessage(error)); }).finally(() => setLoading(false));
 
   useEffect(() => {
     loadCustomers();
   }, []);
 
   const handleOpenCreate = () => {
+    setCustomerPassword("");
     setFormData({
       name: "",
       email: "",
@@ -149,6 +144,7 @@ export default function CustomersPage() {
     e.preventDefault();
     try {
       await customerService.create({
+        password: customerPassword,
         name: formData.name,
         email: formData.email,
         phone: formData.phone,
@@ -168,8 +164,8 @@ export default function CustomersPage() {
       toast.success(`Customer "${formData.name}" registered!`, "Customer Created");
       setIsCreateOpen(false);
       loadCustomers();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to create customer.");
+    } catch (err: unknown) {
+      toast.error(errorMessage(err));
     }
   };
 
@@ -197,8 +193,8 @@ export default function CustomersPage() {
       toast.success(`Customer details updated!`, "Changes Saved");
       setIsEditOpen(false);
       loadCustomers();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to update customer.");
+    } catch (err: unknown) {
+      toast.error(errorMessage(err));
     }
   };
 
@@ -206,11 +202,11 @@ export default function CustomersPage() {
     if (!selectedCustomer) return;
     try {
       await customerService.delete(selectedCustomer.id);
-      toast.info(`Customer "${selectedCustomer.name}" deleted.`);
+      toast.info(`Customer "${selectedCustomer.name}" archived.`);
       setIsDeleteOpen(false);
       loadCustomers();
-    } catch (err: any) {
-      toast.error("Failed to delete customer.");
+    } catch (err: unknown) {
+      toast.error(errorMessage(err));
     }
   };
 
@@ -253,7 +249,7 @@ export default function CustomersPage() {
       ),
     },
     {
-      header: "Total Spent",
+      header: "Total Paid (USD)",
       cell: (c) => (
         <span className="font-bold text-slate-900 text-xs sm:text-sm">
           {formatCurrency(c.totalSpent)}
@@ -285,7 +281,7 @@ export default function CustomersPage() {
           </button>
           <button
             onClick={(e) => handleOpenDelete(c, e)}
-            title="Delete Customer"
+            title="Archive Customer"
             className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
           >
             <Trash2 className="w-4 h-4" />
@@ -298,6 +294,7 @@ export default function CustomersPage() {
   return (
     <AppLayout allowedRoles={["ADMIN", "STAFF"]}>
       <div className="space-y-6">
+        {loadError && <div role="alert" className="p-4 bg-rose-50 text-rose-700 rounded-xl text-sm">{loadError}<button className="ml-3 underline" onClick={() => void loadCustomers()}>Retry</button></div>}
         <PageHeader
           title="Customers Directory"
           description="Manage client organizations, billing profiles, subscription portfolios, and invoicing history."
@@ -332,7 +329,7 @@ export default function CustomersPage() {
               <option value="all">All Statuses</option>
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
-              <option value="suspended">Suspended</option>
+              
             </select>
           }
         />
@@ -354,8 +351,8 @@ export default function CustomersPage() {
                 Cancel
               </button>
               <button
-                type="button"
-                onClick={handleCreateSubmit}
+                type="submit"
+                form="form-handleCreateSubmit"
                 className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-xs"
               >
                 Save Customer
@@ -363,7 +360,8 @@ export default function CustomersPage() {
             </>
           }
         >
-          <form onSubmit={handleCreateSubmit} className="space-y-4">
+          <form id="form-handleCreateSubmit" onSubmit={handleCreateSubmit} className="space-y-4">
+            <label className="block text-xs font-medium text-slate-700">Initial password<input required type="password" minLength={9} maxLength={128} autoComplete="new-password" value={customerPassword} onChange={e => setCustomerPassword(e.target.value)} className="mt-1 w-full px-3 py-2 border rounded-xl text-sm" /><span className="block mt-1 text-slate-500">9?128 characters with uppercase, lowercase, and a special character. Share securely with the customer.</span></label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">Contact Name *</label>
@@ -414,16 +412,7 @@ export default function CustomersPage() {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Tax ID / VAT</label>
-                <input
-                  type="text"
-                  value={formData.taxNumber}
-                  onChange={(e) => setFormData({ ...formData, taxNumber: e.target.value })}
-                  placeholder="US-04-12345"
-                  className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-slate-900"
-                />
-              </div>
+
             </div>
 
             <div>
@@ -476,16 +465,7 @@ export default function CustomersPage() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Account Notes</label>
-              <textarea
-                rows={2}
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                placeholder="Billing preferences or contract terms..."
-                className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-slate-900"
-              />
-            </div>
+
           </form>
         </Modal>
 
@@ -505,8 +485,8 @@ export default function CustomersPage() {
                 Cancel
               </button>
               <button
-                type="button"
-                onClick={handleEditSubmit}
+                type="submit"
+                form="form-handleEditSubmit"
                 className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-xs"
               >
                 Save Customer
@@ -514,7 +494,7 @@ export default function CustomersPage() {
             </>
           }
         >
-          <form onSubmit={handleEditSubmit} className="space-y-4">
+          <form id="form-handleEditSubmit" onSubmit={handleEditSubmit} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">Name</label>
@@ -543,6 +523,7 @@ export default function CustomersPage() {
                 <label className="block text-xs font-medium text-slate-700 mb-1">Email</label>
                 <input
                   type="email"
+                  readOnly
                   required
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
@@ -553,12 +534,12 @@ export default function CustomersPage() {
                 <label className="block text-xs font-medium text-slate-700 mb-1">Status</label>
                 <select
                   value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value as typeof formData.status })}
                   className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-slate-900"
                 >
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
-                  <option value="suspended">Suspended</option>
+                  
                 </select>
               </div>
             </div>
@@ -660,7 +641,7 @@ export default function CustomersPage() {
                           </div>
                           <div className="text-right">
                             <StatusBadge status={s.status} />
-                            <span className="font-bold text-slate-900 block mt-1">{formatCurrency(s.amount)}</span>
+                            <span className="font-bold text-slate-900 block mt-1">{formatCurrency(s.amount, s.currency)}</span>
                           </div>
                         </div>
                       ))
@@ -681,7 +662,7 @@ export default function CustomersPage() {
                           </div>
                           <div className="text-right">
                             <StatusBadge status={inv.status} />
-                            <span className="font-bold text-slate-900 block mt-1">{formatCurrency(inv.totalAmount)}</span>
+                            <span className="font-bold text-slate-900 block mt-1">{formatCurrency(inv.totalAmount, inv.currency)}</span>
                           </div>
                         </div>
                       ))
@@ -702,7 +683,7 @@ export default function CustomersPage() {
                           </div>
                           <div className="text-right">
                             <StatusBadge status={p.status} />
-                            <span className="font-bold text-emerald-600 block mt-1">+{formatCurrency(p.amount)}</span>
+                            <span className="font-bold text-emerald-600 block mt-1">+{formatCurrency(p.amount, p.currency)}</span>
                           </div>
                         </div>
                       ))
@@ -719,9 +700,9 @@ export default function CustomersPage() {
           isOpen={isDeleteOpen}
           onClose={() => setIsDeleteOpen(false)}
           onConfirm={handleDeleteConfirm}
-          title="Delete Customer"
-          message={`Are you sure you want to delete "${selectedCustomer?.name}"? All associated subscription and invoicing history will be detached.`}
-          confirmText="Yes, Delete Customer"
+          title="Archive Customer"
+          message={`Archive this customer? Historical records are preserved.`}
+          confirmText="Yes, Archive Customer"
         />
       </div>
     </AppLayout>

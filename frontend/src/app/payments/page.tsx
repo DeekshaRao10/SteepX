@@ -1,6 +1,7 @@
 "use client";
+import { errorMessage } from "@/services/api";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable, Column } from "@/components/common/DataTable";
@@ -33,7 +34,14 @@ export default function PaymentsPage() {
 
   const [payments, setPayments] = useState<Payment[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [loadError, setLoadError] = useState("");
   const [loading, setLoading] = useState(true);
+
+  const [savingPayment, setSavingPayment] = useState(false);
+  const paymentPending = useRef(false);
+  const paymentKey = useRef("");
+
+  const [currency, setCurrency] = useState("USD");
 
   // Filter
   const [methodFilter, setMethodFilter] = useState<string>("all");
@@ -46,38 +54,18 @@ export default function PaymentsPage() {
   // Record Form state
   const [selectedInvoiceId, setSelectedInvoiceId] = useState("");
   const [amount, setAmount] = useState<number>(0);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("stripe");
+  const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("bank_transfer");
   const [transactionRef, setTransactionRef] = useState("");
   const [notes, setNotes] = useState("");
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const [pays, invs] = await Promise.all([
-        paymentService.getAll(customerId),
-        invoiceService.getAll(customerId),
-      ]);
-      setPayments(pays);
-      setInvoices(invs);
-
-      // Default to first unpaid/partially paid invoice
-      const unpaidInvs = invs.filter((i) => i.balanceAmount > 0);
-      if (unpaidInvs.length > 0 && !selectedInvoiceId) {
-        setSelectedInvoiceId(unpaidInvs[0].id);
-        setAmount(unpaidInvs[0].balanceAmount);
-      }
-    } catch (err) {
-      toast.error("Failed to load payment transactions.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const loadData = () => Promise.all([paymentService.getAll(customerId), invoiceService.getAll(customerId)]).then(([pays, invs]) => { setPayments(pays); setInvoices(invs); const first = invs.find(i => i.status !== "draft" && i.balanceAmount > 0); if (first && !selectedInvoiceId) { setSelectedInvoiceId(first.id); setAmount(first.balanceAmount); } setLoadError(""); }).catch((error: unknown) => { setLoadError(errorMessage(error)); }).finally(() => setLoading(false));
 
   useEffect(() => {
     loadData();
   }, [customerId]);
 
-  const unpaidInvoices = invoices.filter((i) => i.balanceAmount > 0);
+  const unpaidInvoices = invoices.filter((i) => i.status !== "draft" && i.balanceAmount > 0);
   const currentInvoice = invoices.find((i) => i.id === selectedInvoiceId);
 
   const handleInvoiceSelect = (invId: string) => {
@@ -89,6 +77,8 @@ export default function PaymentsPage() {
   };
 
   const handleOpenRecord = () => {
+    paymentKey.current = crypto.randomUUID();
+    setPaymentDate(new Date().toISOString().slice(0, 10));
     if (unpaidInvoices.length > 0) {
       setSelectedInvoiceId(unpaidInvoices[0].id);
       setAmount(unpaidInvoices[0].balanceAmount);
@@ -96,24 +86,26 @@ export default function PaymentsPage() {
       setSelectedInvoiceId("");
       setAmount(0);
     }
-    setPaymentMethod("stripe");
-    setTransactionRef(`TX-${Date.now().toString().slice(-6)}`);
-    setNotes("Direct settlement verified by Brightloop treasury.");
+    setPaymentMethod("bank_transfer");
+    setTransactionRef("");
+    setNotes("");
     setIsRecordOpen(true);
   };
 
   const handleRecordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (paymentPending.current) return;
     if (!currentInvoice) {
       toast.error("Please select an invoice with an outstanding balance.");
       return;
     }
 
     if (amount <= 0 || amount > currentInvoice.balanceAmount) {
-      toast.error(`Please enter an amount between $1 and ${formatCurrency(currentInvoice.balanceAmount)}`);
+      toast.error(`Please enter an amount between $1 and ${formatCurrency(currentInvoice.balanceAmount, currentInvoice.currency)}`);
       return;
     }
 
+    paymentPending.current = true; setSavingPayment(true);
     try {
       await paymentService.create({
         invoiceId: currentInvoice.id,
@@ -122,11 +114,11 @@ export default function PaymentsPage() {
         customerName: currentInvoice.customerName,
         amount: Number(amount),
         paymentMethod,
-        paymentDate: new Date().toISOString(),
+        paymentDate,
         status: "completed",
         transactionRef,
         notes,
-      });
+      }, paymentKey.current);
 
       toast.success(
         `Payment of ${formatCurrency(amount)} recorded for ${currentInvoice.invoiceNumber}!`,
@@ -134,22 +126,22 @@ export default function PaymentsPage() {
       );
       setIsRecordOpen(false);
       loadData();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to record payment.");
-    }
+    } catch (err: unknown) {
+      toast.error(errorMessage(err));
+    } finally { paymentPending.current = false; setSavingPayment(false); }
   };
 
   // KPI Calculations
   const totalReceived = payments
-    .filter((p) => p.status === "completed")
+    .filter((p) => p.status === "completed" && p.currency === currency)
     .reduce((sum, p) => sum + p.amount, 0);
 
   const totalOutstanding = invoices
-    .filter((i) => i.status !== "paid" && i.status !== "cancelled")
+    .filter((i) => i.currency === currency && i.status !== "draft" && i.status !== "paid" && i.status !== "cancelled")
     .reduce((sum, i) => sum + i.balanceAmount, 0);
 
   const totalOverdue = invoices
-    .filter((i) => i.status === "overdue")
+    .filter((i) => i.status === "overdue" && i.currency === currency)
     .reduce((sum, i) => sum + i.balanceAmount, 0);
 
   const filteredPayments = payments.filter((p) => {
@@ -191,7 +183,7 @@ export default function PaymentsPage() {
       header: "Amount Paid",
       cell: (p) => (
         <span className="font-bold text-emerald-600 text-xs sm:text-sm">
-          +{formatCurrency(p.amount)}
+          +{formatCurrency(p.amount, p.currency)}
         </span>
       ),
     },
@@ -230,6 +222,7 @@ export default function PaymentsPage() {
   return (
     <AppLayout>
       <div className="space-y-6">
+        {loadError && <div role="alert" className="p-4 bg-rose-50 text-rose-700 rounded-xl text-sm">{loadError}<button className="ml-3 underline" onClick={() => void loadData()}>Retry</button></div>}
         <PageHeader
           title={isCustomer ? "Payment History" : "Payments & Finance"}
           description={
@@ -254,29 +247,24 @@ export default function PaymentsPage() {
           }
         />
 
+        <label className="block text-xs font-semibold text-slate-600">Summary currency <select value={currency} onChange={e => setCurrency(e.target.value)} className="ml-2 px-3 py-2 border rounded-xl bg-white">{[...new Set(["USD", ...invoices.map(i => i.currency || "USD")])].map(code => <option key={code}>{code}</option>)}</select></label>
         {/* Finance KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <StatCard
             title={isCustomer ? "Total Paid by You" : "Total Cash Collected"}
-            value={formatCurrency(totalReceived)}
-            change={18.2}
-            changePeriod="settled receipts"
+            value={formatCurrency(totalReceived, currency)}
             icon={<DollarSign className="w-5 h-5 text-emerald-600" />}
           />
 
           <StatCard
             title="Outstanding AR Balance"
-            value={formatCurrency(totalOutstanding)}
-            change={-2.1}
-            changePeriod="unpaid invoices"
+            value={formatCurrency(totalOutstanding, currency)}
             icon={<Clock className="w-5 h-5 text-amber-600" />}
           />
 
           <StatCard
             title="Overdue Receivables"
-            value={formatCurrency(totalOverdue)}
-            change={totalOverdue > 0 ? 1 : 0}
-            changePeriod="over 30 days"
+            value={formatCurrency(totalOverdue, currency)}
             icon={<AlertTriangle className="w-5 h-5 text-rose-600" />}
           />
         </div>
@@ -299,11 +287,11 @@ export default function PaymentsPage() {
               className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 font-medium text-slate-700 focus:bg-white focus:outline-hidden"
             >
               <option value="all">All Payment Methods</option>
-              <option value="stripe">Stripe</option>
-              <option value="credit_card">Credit Card</option>
+              
+              
               <option value="bank_transfer">Bank Wire</option>
-              <option value="paypal">PayPal</option>
-              <option value="cash">Cash / Cheque</option>
+              
+              <option value="cash">Cash</option><option value="check">Check</option><option value="other">Other</option>
             </select>
           }
         />
@@ -325,9 +313,9 @@ export default function PaymentsPage() {
                 Cancel
               </button>
               <button
-                type="button"
-                onClick={handleRecordSubmit}
-                disabled={unpaidInvoices.length === 0}
+                type="submit"
+                form="form-handleRecordSubmit"
+                disabled={savingPayment || unpaidInvoices.length === 0}
                 className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-xs disabled:opacity-50"
               >
                 Post Payment
@@ -342,7 +330,8 @@ export default function PaymentsPage() {
               <p className="text-xs text-slate-500">There are no outstanding balances requiring payment.</p>
             </div>
           ) : (
-            <form onSubmit={handleRecordSubmit} className="space-y-4">
+            <form id="form-handleRecordSubmit" onSubmit={handleRecordSubmit} className="space-y-4">
+              <label className="block text-xs">Payment date<input required type="date" max={new Date().toISOString().slice(0, 10)} value={paymentDate} onChange={e => setPaymentDate(e.target.value)} className="block w-full border rounded-xl p-2 text-sm" /></label>
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">
                   Target Invoice (Outstanding Balance) *
@@ -354,7 +343,7 @@ export default function PaymentsPage() {
                 >
                   {unpaidInvoices.map((inv) => (
                     <option key={inv.id} value={inv.id}>
-                      {inv.invoiceNumber} — {inv.customerName} ({formatCurrency(inv.balanceAmount)} due)
+                      {inv.invoiceNumber} — {inv.customerName} ({formatCurrency(inv.balanceAmount, inv.currency)} due)
                     </option>
                   ))}
                 </select>
@@ -362,7 +351,7 @@ export default function PaymentsPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Amount ($) *</label>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Amount ({currentInvoice?.currency}) *</label>
                   <input
                     type="number"
                     min="0.01"
@@ -382,11 +371,11 @@ export default function PaymentsPage() {
                     onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
                     className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-slate-900 font-medium"
                   >
-                    <option value="stripe">Stripe</option>
-                    <option value="credit_card">Credit Card</option>
+                    
+                    
                     <option value="bank_transfer">Bank Wire</option>
-                    <option value="paypal">PayPal</option>
-                    <option value="cash">Cash / Cheque</option>
+                    
+                    <option value="cash">Cash</option><option value="check">Check</option><option value="other">Other</option>
                   </select>
                 </div>
               </div>
@@ -395,7 +384,7 @@ export default function PaymentsPage() {
                 <label className="block text-xs font-medium text-slate-700 mb-1">Transaction Ref / Cheque #</label>
                 <input
                   type="text"
-                  required
+                  maxLength={100}
                   value={transactionRef}
                   onChange={(e) => setTransactionRef(e.target.value)}
                   className="w-full px-3 py-2 text-xs sm:text-sm font-mono bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-slate-900"
@@ -436,7 +425,7 @@ export default function PaymentsPage() {
               <div className="text-center py-4 bg-emerald-50/60 border border-emerald-100 rounded-2xl">
                 <CheckCircle2 className="w-10 h-10 text-emerald-600 mx-auto mb-1" />
                 <span className="text-2xl font-black text-slate-900 block">
-                  {formatCurrency(selectedPayment.amount)}
+                  {formatCurrency(selectedPayment.amount, selectedPayment.currency)}
                 </span>
                 <span className="text-xs text-emerald-700 font-semibold">Payment Completed</span>
               </div>

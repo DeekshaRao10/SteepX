@@ -1,51 +1,28 @@
 import { Product } from "@/types";
-import { apiClient, USE_MOCK, delay } from "./api";
-import { storage } from "./storage";
-
+import { ProductResponse, ProductWrite, VariantResponse, VariantWrite } from "@/types/api";
+import { apiClient, listAll } from "./api";
+import { isCustomerSession } from "./auth.service";
+import { mapProduct } from "./mappers";
+const payload = (data: Product | Omit<Product, "id" | "createdAt" | "updatedAt">): ProductWrite => ({
+  name: data.name, type: data.type, sales_price: data.salesPrice, cost: data.costPrice,
+  currency: data.currency || "USD", notes: data.description, is_active: data.status === "active" });
 export const productService = {
-  getAll: async (): Promise<Product[]> => {
-    if (USE_MOCK) {
-      await delay(150);
-      return storage.getProducts();
-    }
-    const response = await apiClient.get<Product[]>("/products");
-    return response.data;
+  async getAll(): Promise<Product[]> {
+    if (isCustomerSession()) return [];
+    const products = await listAll<ProductResponse>("/products");
+    return Promise.all(products.map(async product => mapProduct(product, await productService.getVariants(product.id))));
   },
-
-  getById: async (id: string): Promise<Product | undefined> => {
-    if (USE_MOCK) {
-      await delay(150);
-      return storage.getProductById(id);
-    }
-    const response = await apiClient.get<Product>(`/products/${id}`);
-    return response.data;
+  async getById(id: string) { return mapProduct((await apiClient.get<ProductResponse>(`/products/${id}`)).data, await productService.getVariants(id)); },
+  async create(data: Omit<Product, "id" | "createdAt" | "updatedAt">) { return mapProduct((await apiClient.post<ProductResponse>("/products", payload(data))).data); },
+  async update(id: string, updates: Partial<Product>) {
+    const product = await productService.getById(id);
+    return mapProduct((await apiClient.put<ProductResponse>(`/products/${id}`, payload({ ...product, ...updates }))).data, await productService.getVariants(id));
   },
-
-  create: async (data: Omit<Product, "id" | "createdAt" | "updatedAt">): Promise<Product> => {
-    if (USE_MOCK) {
-      await delay(200);
-      return storage.createProduct(data);
-    }
-    const response = await apiClient.post<Product>("/products", data);
-    return response.data;
+  async delete(id: string) { await apiClient.delete(`/products/${id}`); return true; },
+  getVariants: (id: string) => listAll<VariantResponse>(`/products/${id}/variants`),
+  async saveVariant(productId: string, data: VariantWrite, variantId?: string) {
+    return (await (variantId ? apiClient.put<VariantResponse>(`/products/${productId}/variants/${variantId}`, data)
+      : apiClient.post<VariantResponse>(`/products/${productId}/variants`, data))).data;
   },
-
-  update: async (id: string, updates: Partial<Product>): Promise<Product> => {
-    if (USE_MOCK) {
-      await delay(200);
-      return storage.updateProduct(id, updates);
-    }
-    const response = await apiClient.put<Product>(`/products/${id}`, updates);
-    return response.data;
-  },
-
-  delete: async (id: string): Promise<boolean> => {
-    if (USE_MOCK) {
-      await delay(200);
-      return storage.deleteProduct(id);
-    }
-    await apiClient.delete(`/products/${id}`);
-    return true;
-  },
+  async archiveVariant(id: string) { await apiClient.delete(`/variants/${id}`); },
 };
-

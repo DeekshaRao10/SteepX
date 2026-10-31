@@ -1,4 +1,5 @@
 "use client";
+import { errorMessage } from "@/services/api";
 
 import React, { useState } from "react";
 import Link from "next/link";
@@ -19,9 +20,8 @@ import {
 
 export default function LoginPage() {
   const { login, isLoading } = useAuth();
-  const [email, setEmail] = useState("alex.vance@brightloop.io");
-  const [password, setPassword] = useState("••••••••••••");
-  const [role, setRole] = useState<UserRole>("ADMIN");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
 
@@ -35,23 +35,10 @@ export default function LoginPage() {
     }
 
     try {
-      await login({ email, password, role });
-    } catch (err: any) {
-      setError(err.message || "Failed to authenticate.");
+      await login({ email, password });
+    } catch (err: unknown) {
+      setError(errorMessage(err));
     }
-  };
-
-  const handleQuickDemoFill = (selectedRole: UserRole) => {
-    setRole(selectedRole);
-    if (selectedRole === "ADMIN") {
-      setEmail("alex.vance@brightloop.io");
-    } else if (selectedRole === "STAFF") {
-      setEmail("sarah.j@brightloop.io");
-    } else {
-      setEmail("david.miller@acmecorp.com");
-    }
-    setPassword("password123");
-    setError("");
   };
 
   return (
@@ -77,60 +64,13 @@ export default function LoginPage() {
       {/* Main Login Card */}
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4">
         <div className="bg-white py-8 px-6 sm:px-10 rounded-2xl border border-slate-200 shadow-xl shadow-slate-200/50">
-          {/* Quick Role Selection for Hackathon Evaluators */}
-          <div className="mb-6">
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-              Select Demo Persona
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickDemoFill("ADMIN")}
-                className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-xs font-semibold transition-all ${
-                  role === "ADMIN"
-                    ? "border-indigo-600 bg-indigo-50/60 text-indigo-700 shadow-2xs"
-                    : "border-slate-200 hover:border-slate-300 text-slate-600"
-                }`}
-              >
-                <ShieldCheck className="w-4 h-4 text-indigo-600 mb-1" />
-                <span>Admin</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickDemoFill("STAFF")}
-                className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-xs font-semibold transition-all ${
-                  role === "STAFF"
-                    ? "border-emerald-600 bg-emerald-50/60 text-emerald-700 shadow-2xs"
-                    : "border-slate-200 hover:border-slate-300 text-slate-600"
-                }`}
-              >
-                <UserCheck className="w-4 h-4 text-emerald-600 mb-1" />
-                <span>Staff</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickDemoFill("CUSTOMER")}
-                className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-xs font-semibold transition-all ${
-                  role === "CUSTOMER"
-                    ? "border-sky-600 bg-sky-50/60 text-sky-700 shadow-2xs"
-                    : "border-slate-200 hover:border-slate-300 text-slate-600"
-                }`}
-              >
-                <Users className="w-4 h-4 text-sky-600 mb-1" />
-                <span>Customer</span>
-              </button>
-            </div>
-          </div>
-
           {error && (
             <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 font-medium">
               {error}
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form id="form-handleSubmit" onSubmit={handleSubmit} className="space-y-4">
             {/* Email Field */}
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">
@@ -165,6 +105,7 @@ export default function LoginPage() {
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
+                  autoComplete="current-password"
                   type={showPassword ? "text" : "password"}
                   required
                   value={password}
@@ -183,14 +124,7 @@ export default function LoginPage() {
             </div>
 
             <div className="flex items-center justify-between text-xs">
-              <label className="flex items-center gap-2 cursor-pointer text-slate-600">
-                <input
-                  type="checkbox"
-                  defaultChecked
-                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
-                />
-                <span>Remember this device</span>
-              </label>
+<p className="text-xs text-slate-500">Your session is limited to this browser tab and expires automatically.</p>
             </div>
 
             {/* Submit Button */}
@@ -203,7 +137,7 @@ export default function LoginPage() {
                 <span>Signing in...</span>
               ) : (
                 <>
-                  <span>Sign In as {role}</span>
+                  <span>Sign In</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
@@ -212,7 +146,7 @@ export default function LoginPage() {
 
           {/* Registration Link */}
           <div className="mt-6 pt-6 border-t border-slate-100 text-center text-xs text-slate-500">
-            Don't have an account yet?{" "}
+            Don&apos;t have an account yet?{" "}
             <Link href="/register" className="font-semibold text-indigo-600 hover:text-indigo-800">
               Create SteepX Account
             </Link>

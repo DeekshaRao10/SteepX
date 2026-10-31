@@ -1,64 +1,64 @@
-import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from "axios";
+import axios from "axios";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+export const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1").replace(/\/$/, "");
+const TOKEN_KEY = "steepx_session_token";
+const EXPIRY_KEY = "steepx_session_expires";
+export const SESSION_EVENT = "steepx:session-ended";
 
-export const apiClient: AxiosInstance = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 10000,
-  headers: {
-    "Content-Type": "application/json",
-    Accept: "application/json",
+// The API validates the server-side session on every request and revokes it on logout.
+// Tokens are scoped to this browser tab and are never put in URLs or logs.
+export const session = {
+  token: () => typeof window === "undefined" ? null : sessionStorage.getItem(TOKEN_KEY),
+  expiresAt: () => typeof window === "undefined" ? 0 : Number(sessionStorage.getItem(EXPIRY_KEY)),
+  save(token: string, expiresIn: number) {
+    sessionStorage.setItem(TOKEN_KEY, token);
+    sessionStorage.setItem(EXPIRY_KEY, String(Date.now() + expiresIn * 1000));
   },
+  clear() {
+    if (typeof window === "undefined") return;
+    sessionStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(EXPIRY_KEY);
+    window.dispatchEvent(new Event(SESSION_EVENT));
+  },
+};
+
+export class ApiError extends Error {
+  constructor(message: string, public status: number, public code?: string) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+export function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "The request could not be completed.";
+}
+export const apiClient = axios.create({
+  baseURL: API_BASE_URL, timeout: 15000,
+  headers: { Accept: "application/json", "Content-Type": "application/json" },
 });
-
-// Request interceptor: attach auth tokens
-apiClient.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
-    if (typeof window !== "undefined") {
-      const token = localStorage.getItem("steepx_auth_token");
-      if (token && config.headers) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-    }
-    return config;
-  },
-  (error: AxiosError) => {
-    return Promise.reject(error);
+apiClient.interceptors.request.use(config => {
+  const token = session.token();
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+apiClient.interceptors.response.use(response => response, error => {
+  const status = error.response?.status || 0;
+  const body = error.response?.data?.error;
+  const details = body?.details?.map((detail: { location: (string | number)[]; message: string }) =>
+    `${detail.location.filter(part => part !== "body").join(".")}: ${detail.message}`).join(" ");
+  if (status === 401 && error.config?.url !== "/auth/login") session.clear();
+  return Promise.reject(new ApiError(details || body?.message || (status
+    ? "The server could not complete this request."
+    : "Cannot reach the API. Check that the backend is running and try again."), status, body?.code));
+});
+export interface Page<T> { items: T[]; total: number; limit: number; offset: number }
+export async function listAll<T>(path: string, params: Record<string, unknown> = {}): Promise<T[]> {
+  const items: T[] = [];
+  let offset = 0;
+  while (true) {
+    const { data } = await apiClient.get<Page<T>>(path, { params: { ...params, limit: 100, offset } });
+    items.push(...data.items);
+    offset += data.items.length;
+    if (!data.items.length || offset >= data.total) return items;
   }
-);
-
-// Response interceptor: structured errors
-apiClient.interceptors.response.use(
-  (response) => response,
-  (error: AxiosError) => {
-    if (error.response) {
-      const status = error.response.status;
-      switch (status) {
-        case 401:
-          console.warn("API Error [401]: Unauthorized - Redirecting or clearing session");
-          break;
-        case 403:
-          console.warn("API Error [403]: Forbidden - Insufficient role permissions");
-          break;
-        case 404:
-          console.warn("API Error [404]: Resource not found");
-          break;
-        case 422:
-          console.warn("API Error [422]: Validation failed", error.response.data);
-          break;
-        case 500:
-          console.error("API Error [500]: Internal server error");
-          break;
-      }
-    } else if (error.request) {
-      console.warn("Network Error: No response received from server. Operating in mock fallback mode.");
-    }
-    return Promise.reject(error);
-  }
-);
-
-export const USE_MOCK = true; // Set to false when FastAPI backend teammate connects
-
-// Helper to simulate network latency for realistic SaaS feel
-export const delay = (ms: number = 200) => new Promise((resolve) => setTimeout(resolve, ms));
-
+}
+export function utcDate() { return new Date().toISOString().slice(0, 10); }

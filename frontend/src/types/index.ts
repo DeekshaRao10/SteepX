@@ -16,6 +16,7 @@ export interface User {
 export type ProductType = 'software' | 'service' | 'hardware' | 'usage';
 
 export interface ProductVariant {
+  isActive?: boolean;
   id: string;
   name: string;
   sku: string;
@@ -23,6 +24,7 @@ export interface ProductVariant {
 }
 
 export interface ProductAddOn {
+  isActive?: boolean;
   id: string;
   name: string;
   price: number;
@@ -30,6 +32,7 @@ export interface ProductAddOn {
 }
 
 export interface Product {
+  currency?: string;
   id: string;
   name: string;
   code: string;
@@ -48,6 +51,8 @@ export type BillingInterval = 'daily' | 'weekly' | 'monthly' | 'yearly';
 export type PlanEndBehavior = 'auto_renew' | 'cancel' | 'pause';
 
 export interface SubscriptionPlan {
+  currency?: string;
+  taxRateId?: string;
   id: string;
   name: string;
   code: string;
@@ -73,6 +78,7 @@ export interface Address {
 }
 
 export interface Customer {
+  password?: string;
   id: string;
   name: string;
   email: string;
@@ -97,6 +103,9 @@ export interface SubscriptionSelectedAddon {
 }
 
 export interface Subscription {
+  currency?: string;
+  lines?: QuotationItem[];
+  quotationId?: string;
   id: string;
   subscriptionNumber: string;
   customerId: string;
@@ -123,6 +132,9 @@ export interface Subscription {
 export type QuotationStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'converted';
 
 export interface QuotationItem {
+  planId?: string;
+  variantIds?: string[];
+  taxRate?: number;
   id: string;
   description: string;
   quantity: number;
@@ -132,6 +144,12 @@ export interface QuotationItem {
 }
 
 export interface Quotation {
+  currency?: string;
+  startDate?: string;
+  endDate?: string;
+  discountCode?: string;
+  isExpired?: boolean;
+  templateId?: string;
   id: string;
   quotationNumber: string;
   customerId: string;
@@ -161,6 +179,9 @@ export interface InvoiceItem {
 }
 
 export interface Invoice {
+  currency?: string;
+  periodStart?: string;
+  periodEnd?: string;
   id: string;
   invoiceNumber: string;
   customerId: string;
@@ -186,6 +207,7 @@ export interface Invoice {
 export type DiscountType = 'percentage' | 'fixed';
 
 export interface Discount {
+  currency?: string;
   id: string;
   code: string;
   name: string;
@@ -201,10 +223,11 @@ export interface Discount {
   createdAt: string;
 }
 
-export type PaymentMethod = 'credit_card' | 'bank_transfer' | 'stripe' | 'paypal' | 'cash';
+export type PaymentMethod = 'credit_card' | 'bank_transfer' | 'stripe' | 'paypal' | 'cash' | 'check' | 'other';
 export type PaymentStatus = 'completed' | 'pending' | 'failed' | 'refunded';
 
 export interface Payment {
+  currency?: string;
   id: string;
   paymentNumber: string;
   invoiceId: string;
@@ -221,6 +244,7 @@ export interface Payment {
 }
 
 export interface DashboardStats {
+  currency?: string;
   totalActiveSubscriptions: number;
   subscriptionsChangePercent: number;
   revenueCollected: number;

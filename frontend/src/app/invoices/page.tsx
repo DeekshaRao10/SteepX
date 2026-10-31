@@ -1,12 +1,14 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable, Column } from "@/components/common/DataTable";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { Modal } from "@/components/common/Modal";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { InvoiceGenerator } from "@/components/common/InvoiceGenerator";
+import { errorMessage } from "@/services/api";
 import { invoiceService } from "@/services/invoice.service";
 import { customerService } from "@/services/customer.service";
 import { paymentService } from "@/services/payment.service";
@@ -34,7 +36,7 @@ export default function InvoicesPage() {
   const customerId = isCustomer ? user?.customerId : undefined;
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [loadError, setLoadError] = useState("");
   const [loading, setLoading] = useState(true);
 
   // Filter
@@ -44,123 +46,48 @@ export default function InvoicesPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isPaymentOpen, setIsPaymentOpen] = useState(false);
-  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
 
   // Payment Form state
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("stripe");
+  const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("bank_transfer");
   const [transactionRef, setTransactionRef] = useState("");
   const [paymentNotes, setPaymentNotes] = useState("");
 
-  // Create Invoice Form state
-  const [selectedCustomerId, setSelectedCustomerId] = useState("");
-  const [issueDate, setIssueDate] = useState(new Date().toISOString().split("T")[0]);
-  const [dueDate, setDueDate] = useState("");
-  const [itemDescription, setItemDescription] = useState("Enterprise Platform Services");
-  const [itemQuantity, setItemQuantity] = useState(1);
-  const [itemUnitPrice, setItemUnitPrice] = useState(299);
-  const [discountAmount, setDiscountAmount] = useState(0);
-
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const [invs, custs] = await Promise.all([
-        invoiceService.getAll(customerId),
-        customerService.getAll(),
-      ]);
-      setInvoices(invs);
-      setCustomers(custs);
-      if (custs.length > 0 && !selectedCustomerId) {
-        setSelectedCustomerId(custs[0].id);
-      }
-    } catch (err) {
-      toast.error("Failed to load invoices.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadData();
-    const d = new Date();
-    d.setDate(d.getDate() + 30);
-    setDueDate(d.toISOString().split("T")[0]);
-  }, [customerId]);
-
-  const handleOpenCreate = () => {
-    if (customers.length > 0) setSelectedCustomerId(customers[0].id);
-    const d = new Date();
-    d.setDate(d.getDate() + 30);
-    setDueDate(d.toISOString().split("T")[0]);
-    setItemDescription("Brightloop Cloud Infrastructure Suite");
-    setItemQuantity(1);
-    setItemUnitPrice(499);
-    setDiscountAmount(0);
-    setIsCreateOpen(true);
-  };
-
-  const handleCreateSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const cust = customers.find((c) => c.id === selectedCustomerId);
-    if (!cust) return;
-
-    const subtotal = itemQuantity * itemUnitPrice;
-    const taxAmount = Math.round((subtotal - discountAmount) * 0.1 * 100) / 100;
-    const totalAmount = Math.round((subtotal - discountAmount + taxAmount) * 100) / 100;
-
-    try {
-      await invoiceService.create({
-        customerId: cust.id,
-        customerName: cust.name,
-        customerEmail: cust.email,
-        items: [
-          {
-            id: `INV-ITEM-${Date.now()}`,
-            description: itemDescription,
-            quantity: itemQuantity,
-            unitPrice: itemUnitPrice,
-            amount: subtotal,
-          },
-        ],
-        issueDate,
-        dueDate,
-        subtotal,
-        taxAmount,
-        discountAmount,
-        totalAmount,
-        status: "unpaid",
-        paymentTerms: "Net 30",
-        notes: "Thank you for your business with Brightloop Software.",
-      });
-
-      toast.success("Invoice generated successfully!", "Invoice Created");
-      setIsCreateOpen(false);
-      loadData();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to create invoice.");
-    }
+  const [savingPayment, setSavingPayment] = useState(false);
+  const paymentPending = useRef(false);
+  const paymentKey = useRef("");
+  const loadData = () => invoiceService.getAll(customerId).then((data) => { setInvoices(data); setLoadError(""); }).catch((error: unknown) => { setLoadError(errorMessage(error)); }).finally(() => setLoading(false));
+  useEffect(() => { void loadData(); }, [customerId]);
+  const handleOpenCreate = () => setIsCreateOpen(true);
+  const handleConfirmInvoice = async (invoice: Invoice) => {
+    try { const updated = await invoiceService.confirm(invoice.id); if (selectedInvoice?.id === invoice.id) setSelectedInvoice(updated); toast.success("Invoice confirmed."); await loadData(); }
+    catch (error) { toast.error(errorMessage(error)); }
   };
 
   const handleOpenPayment = (inv: Invoice, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    paymentKey.current = crypto.randomUUID();
+    setPaymentDate(new Date().toISOString().slice(0, 10));
     setSelectedInvoice(inv);
     setPaymentAmount(inv.balanceAmount);
-    setPaymentMethod("stripe");
-    setTransactionRef(`ch_${Math.random().toString(36).substring(2, 10)}`);
+    setPaymentMethod("bank_transfer");
+    setTransactionRef("");
     setPaymentNotes(`Payment for invoice ${inv.invoiceNumber}`);
     setIsPaymentOpen(true);
   };
 
   const handleRecordPaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedInvoice) return;
+    if (!selectedInvoice || paymentPending.current) return;
 
     if (paymentAmount <= 0 || paymentAmount > selectedInvoice.balanceAmount) {
-      toast.error(`Please enter an amount between $1 and ${formatCurrency(selectedInvoice.balanceAmount)}`);
+      toast.error(`Please enter an amount between $1 and ${formatCurrency(selectedInvoice.balanceAmount, selectedInvoice.currency)}`);
       return;
     }
 
+    paymentPending.current = true; setSavingPayment(true);
     try {
       await paymentService.create({
         invoiceId: selectedInvoice.id,
@@ -169,11 +96,11 @@ export default function InvoicesPage() {
         customerName: selectedInvoice.customerName,
         amount: Number(paymentAmount),
         paymentMethod,
-        paymentDate: new Date().toISOString(),
+        paymentDate,
         status: "completed",
         transactionRef,
         notes: paymentNotes,
-      });
+      }, paymentKey.current);
 
       toast.success(
         `Payment of ${formatCurrency(paymentAmount)} recorded for ${selectedInvoice.invoiceNumber}!`,
@@ -181,27 +108,9 @@ export default function InvoicesPage() {
       );
       setIsPaymentOpen(false);
       loadData();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to process payment.");
-    }
-  };
-
-  const handleOpenDelete = (inv: Invoice, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    setSelectedInvoice(inv);
-    setIsDeleteOpen(true);
-  };
-
-  const handleDeleteConfirm = async () => {
-    if (!selectedInvoice) return;
-    try {
-      await invoiceService.delete(selectedInvoice.id);
-      toast.info(`Invoice ${selectedInvoice.invoiceNumber} removed.`);
-      setIsDeleteOpen(false);
-      loadData();
-    } catch (err) {
-      toast.error("Failed to delete invoice.");
-    }
+    } catch (err: unknown) {
+      toast.error(errorMessage(err));
+    } finally { paymentPending.current = false; setSavingPayment(false); }
   };
 
   const filteredInvoices = invoices.filter((i) => {
@@ -247,7 +156,7 @@ export default function InvoicesPage() {
       header: "Total",
       cell: (i) => (
         <span className="font-bold text-slate-900 text-xs sm:text-sm">
-          {formatCurrency(i.totalAmount)}
+          {formatCurrency(i.totalAmount, i.currency)}
         </span>
       ),
     },
@@ -262,7 +171,7 @@ export default function InvoicesPage() {
             </span>
           ) : (
             <span className="text-rose-600 font-bold">
-              {formatCurrency(i.balanceAmount)} due
+              {formatCurrency(i.balanceAmount, i.currency)} due
             </span>
           )}
         </div>
@@ -277,14 +186,15 @@ export default function InvoicesPage() {
       className: "text-right",
       cell: (i) => (
         <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
-          {i.balanceAmount > 0 && (
+          {!isCustomer && i.status === "draft" && <button onClick={() => handleConfirmInvoice(i)} className="px-2 py-1 text-xs bg-indigo-50 text-indigo-700 rounded-md">Confirm</button>}
+          {!isCustomer && i.status !== "draft" && i.balanceAmount > 0 && (
             <button
               onClick={(e) => handleOpenPayment(i, e)}
               title="Record Payment"
               className="px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs font-semibold flex items-center gap-1 transition-colors"
             >
               <CreditCard className="w-3.5 h-3.5" />
-              <span>Pay</span>
+              <span>Record Payment</span>
             </button>
           )}
 
@@ -298,15 +208,7 @@ export default function InvoicesPage() {
           >
             <Eye className="w-4 h-4" />
           </button>
-          {!isCustomer && (
-            <button
-              onClick={(e) => handleOpenDelete(i, e)}
-              title="Delete"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          )}
+
         </div>
       ),
     },
@@ -315,6 +217,7 @@ export default function InvoicesPage() {
   return (
     <AppLayout>
       <div className="space-y-6">
+        {loadError && <div role="alert" className="p-4 bg-rose-50 text-rose-700 rounded-xl text-sm">{loadError}<button className="ml-3 underline" onClick={() => void loadData()}>Retry</button></div>}
         <PageHeader
           title={isCustomer ? "My Invoices & Receipts" : "Invoices & Receivables"}
           description={
@@ -370,7 +273,7 @@ export default function InvoicesPage() {
           isOpen={isPaymentOpen}
           onClose={() => setIsPaymentOpen(false)}
           title={`Record Payment for ${selectedInvoice?.invoiceNumber}`}
-          description={`Customer: ${selectedInvoice?.customerName} • Outstanding Balance: ${formatCurrency(selectedInvoice?.balanceAmount || 0)}`}
+          description={`Customer: ${selectedInvoice?.customerName} • Outstanding Balance: ${formatCurrency(selectedInvoice?.balanceAmount || 0, selectedInvoice?.currency)}`}
           maxWidth="md"
           footer={
             <>
@@ -382,8 +285,9 @@ export default function InvoicesPage() {
                 Cancel
               </button>
               <button
-                type="button"
-                onClick={handleRecordPaymentSubmit}
+                type="submit"
+                disabled={savingPayment}
+                form="form-handleRecordPaymentSubmit"
                 className="px-4 py-2 text-xs font-semibold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 shadow-xs flex items-center gap-1.5"
               >
                 <CheckCircle2 className="w-3.5 h-3.5" />
@@ -392,7 +296,8 @@ export default function InvoicesPage() {
             </>
           }
         >
-          <form onSubmit={handleRecordPaymentSubmit} className="space-y-4">
+          <form id="form-handleRecordPaymentSubmit" onSubmit={handleRecordPaymentSubmit} className="space-y-4">
+              <label className="block text-xs">Payment date<input required type="date" max={new Date().toISOString().slice(0, 10)} value={paymentDate} onChange={e => setPaymentDate(e.target.value)} className="block w-full border rounded-xl p-2 text-sm" /></label>
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">
                 Amount to Collect ($) *
@@ -417,11 +322,11 @@ export default function InvoicesPage() {
                   onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
                   className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-slate-900 font-medium"
                 >
-                  <option value="stripe">Stripe</option>
-                  <option value="credit_card">Credit Card</option>
+                  
+                  
                   <option value="bank_transfer">Bank Wire</option>
-                  <option value="paypal">PayPal</option>
-                  <option value="cash">Cash / Cheque</option>
+                  
+                  <option value="cash">Cash</option><option value="check">Check</option><option value="other">Other</option>
                 </select>
               </div>
 
@@ -457,7 +362,8 @@ export default function InvoicesPage() {
           maxWidth="2xl"
           footer={
             <div className="flex items-center justify-between w-full">
-              {selectedInvoice && selectedInvoice.balanceAmount > 0 && (
+              {selectedInvoice && !isCustomer && selectedInvoice.status === "draft" && <button onClick={() => handleConfirmInvoice(selectedInvoice)} className="px-3 py-2 text-xs bg-indigo-600 text-white rounded-xl">Confirm Invoice</button>}
+              {selectedInvoice && !isCustomer && selectedInvoice.status !== "draft" && selectedInvoice.balanceAmount > 0 && (
                 <button
                   onClick={() => handleOpenPayment(selectedInvoice)}
                   className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs"
@@ -556,30 +462,30 @@ export default function InvoicesPage() {
                 <div className="w-72 space-y-1.5 text-xs">
                   <div className="flex justify-between">
                     <span className="text-slate-500">Subtotal:</span>
-                    <span className="font-semibold text-slate-800">{formatCurrency(selectedInvoice.subtotal)}</span>
+                    <span className="font-semibold text-slate-800">{formatCurrency(selectedInvoice.subtotal, selectedInvoice.currency)}</span>
                   </div>
                   {selectedInvoice.discountAmount > 0 && (
                     <div className="flex justify-between text-emerald-600">
                       <span>Discount:</span>
-                      <span className="font-semibold">-{formatCurrency(selectedInvoice.discountAmount)}</span>
+                      <span className="font-semibold">-{formatCurrency(selectedInvoice.discountAmount, selectedInvoice.currency)}</span>
                     </div>
                   )}
                   <div className="flex justify-between">
                     <span className="text-slate-500">Tax:</span>
-                    <span className="font-semibold text-slate-800">{formatCurrency(selectedInvoice.taxAmount)}</span>
+                    <span className="font-semibold text-slate-800">{formatCurrency(selectedInvoice.taxAmount, selectedInvoice.currency)}</span>
                   </div>
                   <div className="flex justify-between pt-2 border-t border-slate-200 font-bold text-slate-900">
                     <span>Total Invoiced:</span>
-                    <span className="text-sm">{formatCurrency(selectedInvoice.totalAmount)}</span>
+                    <span className="text-sm">{formatCurrency(selectedInvoice.totalAmount, selectedInvoice.currency)}</span>
                   </div>
                   <div className="flex justify-between text-emerald-600">
                     <span>Paid to Date:</span>
-                    <span className="font-semibold">-{formatCurrency(selectedInvoice.paidAmount)}</span>
+                    <span className="font-semibold">-{formatCurrency(selectedInvoice.paidAmount, selectedInvoice.currency)}</span>
                   </div>
                   <div className="flex justify-between pt-2 border-t border-slate-200 font-black text-slate-900">
                     <span>Balance Remaining:</span>
                     <span className={`text-base ${selectedInvoice.balanceAmount > 0 ? "text-rose-600" : "text-emerald-600"}`}>
-                      {formatCurrency(selectedInvoice.balanceAmount)}
+                      {formatCurrency(selectedInvoice.balanceAmount, selectedInvoice.currency)}
                     </span>
                   </div>
                 </div>
@@ -595,133 +501,7 @@ export default function InvoicesPage() {
           )}
         </Modal>
 
-        {/* Modal: Create Manual Invoice */}
-        <Modal
-          isOpen={isCreateOpen}
-          onClose={() => setIsCreateOpen(false)}
-          title="Create Manual Invoice"
-          description="Directly issue a billing invoice to a customer outside of automated subscription cycles."
-          maxWidth="lg"
-          footer={
-            <>
-              <button
-                type="button"
-                onClick={() => setIsCreateOpen(false)}
-                className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleCreateSubmit}
-                className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-xs"
-              >
-                Generate & Issue
-              </button>
-            </>
-          }
-        >
-          <form onSubmit={handleCreateSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Customer *</label>
-              <select
-                value={selectedCustomerId}
-                onChange={(e) => setSelectedCustomerId(e.target.value)}
-                className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-slate-900"
-              >
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.company})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Issue Date</label>
-                <input
-                  type="date"
-                  required
-                  value={issueDate}
-                  onChange={(e) => setIssueDate(e.target.value)}
-                  className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-slate-900"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Due Date</label>
-                <input
-                  type="date"
-                  required
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-slate-900"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Item Description</label>
-              <input
-                type="text"
-                required
-                value={itemDescription}
-                onChange={(e) => setItemDescription(e.target.value)}
-                className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-slate-900"
-              />
-            </div>
-
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Quantity</label>
-                <input
-                  type="number"
-                  min="1"
-                  required
-                  value={itemQuantity}
-                  onChange={(e) => setItemQuantity(Number(e.target.value))}
-                  className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-slate-900"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Unit Price ($)</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  required
-                  value={itemUnitPrice}
-                  onChange={(e) => setItemUnitPrice(Number(e.target.value))}
-                  className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-slate-900"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Discount ($)</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={discountAmount}
-                  onChange={(e) => setDiscountAmount(Number(e.target.value))}
-                  className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-slate-900"
-                />
-              </div>
-            </div>
-          </form>
-        </Modal>
-
-        {/* Delete Confirmation */}
-        <ConfirmDialog
-          isOpen={isDeleteOpen}
-          onClose={() => setIsDeleteOpen(false)}
-          onConfirm={handleDeleteConfirm}
-          title="Delete Invoice"
-          message={`Are you sure you want to delete invoice ${selectedInvoice?.invoiceNumber}?`}
-          confirmText="Yes, Delete Invoice"
-        />
+        {isCreateOpen && <InvoiceGenerator onClose={() => setIsCreateOpen(false)} onSaved={() => { setIsCreateOpen(false); toast.success("Draft invoice generated. Review and confirm it before recording payment."); void loadData(); }} />}
       </div>
     </AppLayout>
   );
