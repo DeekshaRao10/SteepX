@@ -4,11 +4,11 @@ from alembic import context
 from sqlalchemy import create_engine, pool
 
 from app import models  # noqa: F401 -- registers models added in future phases
-from app.core.config import get_settings
+from app.core.config import get_database_settings
 from app.core.logging import configure_logging
 from app.db.base import Base
 
-settings = get_settings()
+settings = get_database_settings()
 configure_logging(settings.log_level)
 target_metadata = Base.metadata
 
@@ -26,6 +26,12 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
+    provided_connection = context.config.attributes.get("connection")
+    if provided_connection is not None:
+        context.configure(connection=provided_connection, target_metadata=target_metadata, compare_type=True)
+        with context.begin_transaction():
+            context.run_migrations()
+        return
     engine = create_engine(
         settings.database_url.get_secret_value(),
         poolclass=pool.NullPool,

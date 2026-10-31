@@ -23,5 +23,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Revert this revision; assess data loss and obtain approval first."""
-    ${downgrades if downgrades else "pass"}
+    raise RuntimeError("Destructive downgrade requires a separately reviewed recovery plan.")

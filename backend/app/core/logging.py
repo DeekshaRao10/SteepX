@@ -1,4 +1,6 @@
 import logging
+import json
+from datetime import UTC, datetime
 from copy import copy
 from logging.config import dictConfig
 
@@ -20,7 +22,9 @@ class SafeFormatter(logging.Formatter):
             safe_record.exc_info = None
             safe_record.exc_text = None
             safe_record.stack_info = None
-        return super().format(safe_record)
+        return json.dumps({"timestamp": datetime.fromtimestamp(safe_record.created, UTC).isoformat(),
+                           "level": safe_record.levelname, "logger": safe_record.name,
+                           "message": safe_record.getMessage()}, ensure_ascii=True)
 
 
 def configure_logging(level: str) -> None:

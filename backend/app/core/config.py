@@ -12,7 +12,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[2]
 PROJECT_DIR = BACKEND_DIR.parent
 
 
-class Settings(BaseSettings):
+class DatabaseSettings(BaseSettings):
     """Process environment > backend/.env > project .env > field defaults."""
 
     model_config = SettingsConfigDict(
@@ -78,6 +78,39 @@ class Settings(BaseSettings):
         return origins
 
 
+class Settings(DatabaseSettings):
+    billing_due_days: int = Field(default=14, ge=0, le=365)
+    billing_currency: str = Field(default="USD", pattern=r"^[A-Z]{3}$")
+    jwt_secret_key: SecretStr = Field(repr=False)
+    jwt_algorithm: Literal["HS256"] = "HS256"
+    jwt_issuer: str = Field(default="steepx", min_length=1, max_length=100)
+    jwt_audience: str = Field(default="steepx-api", min_length=1, max_length=100)
+    access_token_expire_minutes: int = Field(default=30, ge=1, le=60)
+
+    @field_validator("jwt_secret_key")
+    @classmethod
+    def validate_jwt_secret(cls, value: SecretStr) -> SecretStr:
+        secret = value.get_secret_value()
+        if (
+            len(secret.encode("utf-8")) < 32
+            or len(set(secret)) < 12
+            or any(word in secret.lower() for word in (
+                "changeme", "change-me", "change_me", "replace", "placeholder",
+                "your-secret", "your_secret", "<", ">",
+            ))
+        ):
+            raise ValueError("JWT_SECRET_KEY must be a strong generated secret.")
+        return value
+
+
+@lru_cache(maxsize=1)
+def get_database_settings() -> DatabaseSettings:
+    try:
+        return DatabaseSettings()
+    except (ValidationError, SettingsError):
+        raise RuntimeError("Invalid database configuration; values omitted.") from None
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     try:
@@ -86,7 +119,7 @@ def get_settings() -> Settings:
         # Settings exceptions can contain environment values, including secrets.
         raise RuntimeError(
             "Invalid backend configuration. Check DATABASE_URL, CORS_ORIGINS, "
-            "CORS_ALLOW_CREDENTIALS, LOG_LEVEL, and DB pool settings against "
+            "CORS_ALLOW_CREDENTIALS, LOG_LEVEL, DB pool settings, and JWT settings against "
             "backend/.env.example. "
             "Configuration values are intentionally omitted."
         ) from None

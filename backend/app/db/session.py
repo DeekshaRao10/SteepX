@@ -4,10 +4,10 @@ from fastapi import Request
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.core.config import Settings
+from app.core.config import DatabaseSettings
 
 
-def create_database_engine(settings: Settings) -> Engine:
+def create_database_engine(settings: DatabaseSettings) -> Engine:
     """Create an engine without opening a connection or issuing SQL."""
     return create_engine(
         settings.database_url.get_secret_value(),

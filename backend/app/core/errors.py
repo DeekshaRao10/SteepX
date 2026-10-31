@@ -41,6 +41,11 @@ HTTP_ERRORS: dict[int, tuple[str, str]] = {
 }
 
 VALIDATION_MESSAGES = {
+    "calendar_date": "Use a YYYY-MM-DD calendar date; timestamps are not accepted.",
+    "email_invalid": "Enter a valid email address with an ASCII local part.",
+    "password_policy": "Use 9–128 characters, including uppercase, lowercase, and a special character.",
+    "string_too_short": "The value is too short.",
+    "string_too_long": "The value is too long.",
     "missing": "This field is required.",
     "extra_forbidden": "This field is not allowed.",
     "json_invalid": "The request body must contain valid JSON.",
@@ -50,6 +55,23 @@ VALIDATION_MESSAGES = {
     "bool_type": "A boolean is required.",
     "bool_parsing": "A boolean is required.",
 }
+
+
+class PublicError(Exception):
+    """Only deliberately authored, non-sensitive messages may cross this boundary."""
+
+    def __init__(self, status_code: int, code: str, message: str) -> None:
+        self.status_code = status_code
+        self.code = code
+        self.message = message
+        super().__init__(code)
+
+
+async def public_error_handler(_request: Request, exc: PublicError) -> JSONResponse:
+    headers = {"Cache-Control": "no-store"}
+    if exc.status_code == 401:
+        headers["WWW-Authenticate"] = "Bearer"
+    return error_response(exc.status_code, exc.code, exc.message, headers=headers)
 
 
 def error_response(
@@ -100,6 +122,7 @@ async def unexpected_error_handler(_request: Request, _exc: Exception) -> JSONRe
 
 
 def register_error_handlers(app: FastAPI) -> None:
+    app.add_exception_handler(PublicError, public_error_handler)
     app.add_exception_handler(HTTPException, http_error_handler)
     app.add_exception_handler(RequestValidationError, validation_error_handler)
     app.add_exception_handler(Exception, unexpected_error_handler)
