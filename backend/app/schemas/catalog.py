@@ -26,6 +26,7 @@ class CustomerCreate(CustomerAdminUpdate):
 
 
 class CustomerResponse(Record):
+    email: str
     display_name: str
     company: str
     phone: str

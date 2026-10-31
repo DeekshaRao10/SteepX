@@ -386,11 +386,13 @@ at /docs, /redoc and /openapi.json remains public.
 | POST | /api/v1/auth/login | Public | LoginRequest | 200 / TokenResponse |
 | GET | /api/v1/auth/me | Authenticated; ownership applies | — | 200 / UserResponse |
 | POST | /api/v1/auth/logout | Authenticated; ownership applies | — | 204 / — |
+| GET | /api/v1/staff | admin | — | 200 / Page_UserResponse_ |
 | POST | /api/v1/staff | admin | RegisterRequest | 201 / UserResponse |
 | GET | /api/v1/customers/me | Authenticated; ownership applies | — | 200 / CustomerResponse |
 | PATCH | /api/v1/customers/me | Authenticated; ownership applies | CustomerUpdate | 200 / CustomerResponse |
 | GET | /api/v1/customers | admin, staff | — | 200 / Page_CustomerResponse_ |
 | POST | /api/v1/customers | admin, staff | CustomerCreate | 201 / CustomerResponse |
+| POST | /api/v1/customers/accounts | admin, staff | RegisterRequest | 201 / CustomerResponse |
 | GET | /api/v1/customers/{customer_id} | Authenticated; ownership applies | — | 200 / CustomerResponse |
 | PATCH | /api/v1/customers/{customer_id} | admin, staff | CustomerAdminUpdate | 200 / CustomerResponse |
 | DELETE | /api/v1/customers/{customer_id} | admin, staff | — | 204 / — |

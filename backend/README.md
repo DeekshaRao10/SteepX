@@ -305,3 +305,16 @@ No thousands-of-record load benchmark or production certification is claimed.
 The two root .gitignore exclusions for backend README/docs were removed so source
 documentation can be tracked. Environment files, temporary manifests and demo
 credentials remain ignored. No Git commands were used.
+# Local development demo data
+
+To populate the database used by the normal local application without resetting existing records, run from this directory:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.seed_demo --target development
+.\.venv\Scripts\python.exe -m scripts.verify_development_demo --target development
+```
+
+The second command requires the regular backend to be running on `127.0.0.1:8000`. The seeder verifies the local database, preserves the existing administrator, creates only missing demo accounts, and writes its business records plus a seed receipt in one transaction. Repeated runs preserve the dataset and subsequent UI edits. It does not run automatically, refresh demo dates, promote existing users, replace passwords, or call a payment gateway.
+
+Private generated passwords use Windows DPAPI in ignored `tmp/development-demo-credentials.json`. List account emails with `python -m scripts.development_demo_credentials --list`; copy a password privately with `python -m scripts.development_demo_credentials --account staff --copy-password` (or `--account customer`). Paste it into the frontend login form and then clear your clipboard and clipboard history. The existing admin uses its existing password. See the root [README](../README.md#populate-the-existing-local-development-database) for account aliases and the complete workflow.
+

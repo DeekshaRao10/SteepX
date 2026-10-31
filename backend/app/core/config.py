@@ -24,7 +24,7 @@ class DatabaseSettings(BaseSettings):
     )
 
     database_url: SecretStr = Field(repr=False)
-    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000", "http://127.0.0.1:3000"])
     cors_allow_credentials: bool = True
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     db_pool_size: int = Field(default=5, ge=1, le=50)

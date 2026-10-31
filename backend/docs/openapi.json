@@ -435,35 +435,105 @@
       }
     },
     "/api/v1/staff": {
-      "post": {
+      "get": {
         "tags": [
           "staff"
         ],
-        "summary": "Create Staff",
-        "operationId": "create_staff_api_v1_staff_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RegisterRequest"
-              }
+        "summary": "List Staff",
+        "operationId": "list_staff_api_v1_staff_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
             }
           },
-          "required": true
-        },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000000,
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "created_at",
+                "-created_at",
+                "name",
+                "-name"
+              ],
+              "type": "string",
+              "default": "-created_at",
+              "title": "Sort"
+            }
+          },
+          {
+            "name": "is_active",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Active"
+            }
+          }
+        ],
         "responses": {
-          "201": {
+          "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/UserResponse"
+                  "$ref": "#/components/schemas/Page_UserResponse_"
                 }
               }
             }
           },
           "401": {
-            "description": "Unauthorized",
+            "description": "Missing or invalid authentication",
             "content": {
               "application/json": {
                 "schema": {
@@ -473,7 +543,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Role not permitted",
             "content": {
               "application/json": {
                 "schema": {
@@ -493,7 +563,7 @@
             }
           },
           "409": {
-            "description": "Conflict",
+            "description": "State or uniqueness conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -523,11 +593,103 @@
             }
           }
         },
+        "x-roles": [
+          "admin"
+        ]
+      },
+      "post": {
+        "tags": [
+          "staff"
+        ],
+        "summary": "Create Staff",
+        "operationId": "create_staff_api_v1_staff_post",
         "security": [
           {
             "HTTPBearer": []
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Resource missing or inaccessible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Invalid request data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
         "x-roles": [
           "admin"
         ]
@@ -970,6 +1132,106 @@
             }
           }
         },
+        "x-roles": [
+          "admin",
+          "staff"
+        ]
+      }
+    },
+    "/api/v1/customers/accounts": {
+      "post": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Create Customer Account",
+        "operationId": "create_customer_account_api_v1_customers_accounts_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role not permitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing or inaccessible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "State or uniqueness conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "x-roles": [
           "admin",
           "staff"
@@ -7258,6 +7520,10 @@
             "format": "date-time",
             "title": "Updated At"
           },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
           "display_name": {
             "type": "string",
             "title": "Display Name"
@@ -7284,6 +7550,7 @@
           "id",
           "created_at",
           "updated_at",
+          "email",
           "display_name",
           "company",
           "phone",
@@ -8450,6 +8717,37 @@
         ],
         "title": "Page[TemplateResponse]"
       },
+      "Page_UserResponse_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UserResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[UserResponse]"
+      },
       "Page_VariantResponse_": {
         "properties": {
           "items": {
@@ -9252,6 +9550,30 @@
             "format": "password",
             "title": "Password",
             "writeOnly": true
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 150,
+            "title": "Display Name",
+            "default": ""
+          },
+          "company": {
+            "type": "string",
+            "maxLength": 150,
+            "title": "Company",
+            "default": ""
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 40,
+            "title": "Phone",
+            "default": ""
+          },
+          "billing_address": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Billing Address",
+            "default": ""
           }
         },
         "additionalProperties": false,

@@ -9,6 +9,8 @@ from app.models.catalog import CustomerProfile, Product, ProductVariant, Subscri
 from app.schemas.catalog import (CustomerAdminUpdate, CustomerCreate, CustomerResponse, CustomerUpdate,
     Interval, PlanResponse, PlanWrite, ProductResponse, ProductWrite, VariantResponse, VariantWrite)
 from app.schemas.common import ListQuery, Page
+from app.schemas.auth import RegisterRequest
+from app.services.auth import create_account
 from app.services import catalog as service
 from app.services.auth import AuthenticatedUser
 
@@ -35,6 +37,12 @@ def customers(query: Listing, session: DatabaseSession, _operator: Operator):
 @router.post("/customers", response_model=CustomerResponse, status_code=201)
 def create_customer(data: CustomerCreate, session: DatabaseSession, _operator: Operator):
     return service.create_customer_profile(session, data)
+
+
+@router.post("/customers/accounts", response_model=CustomerResponse, status_code=201)
+def create_customer_account(data: RegisterRequest, session: DatabaseSession, operator: Operator):
+    account = create_account(session, data)
+    return service.customer_profile(session, operator, account.id)
 
 
 @router.get("/customers/{customer_id}", response_model=CustomerResponse)

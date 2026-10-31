@@ -26,7 +26,8 @@ def _insert_user(session: Session, data: RegisterRequest, role: UserRole, passwo
     session.add(user)
     session.flush()
     if role == UserRole.CUSTOMER:
-        session.add(CustomerProfile(id=user.id))
+        session.add(CustomerProfile(id=user.id, display_name=data.display_name,
+            company=data.company, phone=data.phone, billing_address=data.billing_address))
         session.flush()
     return UserResponse.model_validate(user)
 

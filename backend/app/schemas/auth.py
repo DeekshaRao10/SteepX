@@ -31,6 +31,11 @@ class Credentials(BaseModel):
 
 
 class RegisterRequest(Credentials):
+    display_name: str = Field(default="", max_length=150)
+    company: str = Field(default="", max_length=150)
+    phone: str = Field(default="", max_length=40)
+    billing_address: str = Field(default="", max_length=2000)
+
     @field_validator("password")
     @classmethod
     def check_password(cls, password: SecretStr) -> SecretStr:

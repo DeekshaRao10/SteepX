@@ -16,6 +16,11 @@ class CustomerProfile(TimestampMixin, Base):
     phone: Mapped[str] = mapped_column(String(40), default="", server_default="")
     billing_address: Mapped[str] = mapped_column(Text, default="", server_default="")
     is_active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
+    user = relationship("User", lazy="selectin", viewonly=True)
+
+    @property
+    def email(self) -> str:
+        return self.user.email
 
 
 class Product(TimestampMixin, Base):
