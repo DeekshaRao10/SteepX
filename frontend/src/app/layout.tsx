@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import "./tailwind-built.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { ToastProvider } from "@/context/ToastContext";
 
@@ -16,9 +15,6 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full antialiased light">
-      <head>
-        <link rel="stylesheet" href="/compiled-tailwind.css" />
-      </head>
       <body className="min-h-full flex flex-col font-sans bg-slate-50 text-slate-900 selection:bg-indigo-600 selection:text-white">
         <ToastProvider>
           <AuthProvider>
