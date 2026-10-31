@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node build-css.js",
     "dev": "next dev",
+    "prebuild": "node build-css.js",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
